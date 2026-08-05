@@ -1,0 +1,44 @@
+# Code owners for pqtls-lab.
+#
+# @nbermparis is the current maintainer. Add reviewers as the project grows.
+
+# Default owner for everything.
+*                               @nbermparis
+
+# ---------------------------------------------------------------------------
+# Security-critical paths.
+#
+# Changes here alter what the project actually guarantees, so they are called
+# out separately even when the owner is the same person: the point is that the
+# review is a different kind of review, not that it is a different reviewer.
+# ---------------------------------------------------------------------------
+
+# TLS policy, group configuration, verification and downgrade enforcement.
+/src/common/tls_context.cpp     @nbermparis
+/src/common/security_profile.cpp @nbermparis
+/include/pqtls/tls_context.hpp  @nbermparis
+/include/pqtls/security_profile.hpp @nbermparis
+
+# The profile catalogue. An edit here can weaken every connection.
+/config/profiles.yaml           @nbermparis
+
+# Certificate generation and key handling.
+/scripts/generate-classical-certs.sh @nbermparis
+/scripts/generate-pq-certs.sh   @nbermparis
+
+# Anything that could cause key material to be committed.
+/.gitignore                     @nbermparis
+/.github/workflows/security.yml @nbermparis
+
+# Claims about what the project provides.
+/README.md                      @nbermparis
+/docs/threat-model.md           @nbermparis
+/docs/limitations.md            @nbermparis
+/docs/security-profiles.md      @nbermparis
+/docs/pqc-standards-status.md   @nbermparis
+/SECURITY.md                    @nbermparis
+
+# Reproducibility surface: pinned versions and checksums.
+/docker/openssl-checksums.txt   @nbermparis
+/docker/Dockerfile              @nbermparis
+/CMakeLists.txt                 @nbermparis

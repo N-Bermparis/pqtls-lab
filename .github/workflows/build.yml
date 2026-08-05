@@ -1,0 +1,205 @@
+name: build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+# Least privilege: this workflow only reads the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned. Ubuntu 24.04 runners ship OpenSSL 3.0.x, which has no ML-KEM, so
+  # the post-quantum profiles need this build. See docker/openssl-checksums.txt.
+  OPENSSL_VERSION: "3.5.7"
+  OPENSSL_SHA256: "a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # The pinned OpenSSL is expensive to build, so it is built once and cached.
+  # The cache key includes the version AND the checksum: changing either
+  # produces a new key, so a cached artefact can never be silently reused for a
+  # different source.
+  # ---------------------------------------------------------------------------
+  openssl:
+    name: pinned OpenSSL ${{ github.workflow }}
+    runs-on: ubuntu-24.04
+    outputs:
+      cache-key: ${{ steps.key.outputs.value }}
+    steps:
+      - name: Compute the cache key
+        id: key
+        run: echo "value=openssl-${{ env.OPENSSL_VERSION }}-${{ env.OPENSSL_SHA256 }}-ubuntu2404" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the OpenSSL cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/openssl
+          key: ${{ steps.key.outputs.value }}
+
+      - name: Build OpenSSL
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          curl -fsSL --proto '=https' --tlsv1.2 \
+            -o openssl.tar.gz \
+            "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz"
+          # Verify before extracting. Never build an unverified archive.
+          echo "${OPENSSL_SHA256}  openssl.tar.gz" | sha256sum -c -
+          tar -xzf openssl.tar.gz
+          cd "openssl-${OPENSSL_VERSION}"
+          ./Configure --prefix=/opt/openssl --openssldir=/opt/openssl/ssl \
+            --libdir=lib shared no-ssl3 no-weak-ssl-ciphers
+          make -j"$(nproc)"
+          sudo make install_sw
+
+      - name: Verify the post-quantum groups are present
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH=/opt/openssl/lib
+          /opt/openssl/bin/openssl version
+          groups="$(/opt/openssl/bin/openssl list -tls-groups)"
+          echo "$groups"
+          for required in X25519MLKEM768 SecP256r1MLKEM768 SecP384r1MLKEM1024; do
+            echo "$groups" | grep -q "$required" || {
+              echo "::error::the pinned OpenSSL lacks the TLS group $required"
+              exit 1
+            }
+          done
+
+  build:
+    name: ${{ matrix.compiler }} / ${{ matrix.build_type }}
+    needs: openssl
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        build_type: [Debug, Release]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore the pinned OpenSSL
+        uses: actions/cache@v4
+        with:
+          path: /opt/openssl
+          key: ${{ needs.openssl.outputs.cache-key }}
+          fail-on-cache-miss: true
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build pkg-config
+          if [ "${{ matrix.compiler }}" = "clang" ]; then
+            sudo apt-get install -y --no-install-recommends clang
+          fi
+
+      - name: Select the compiler
+        run: |
+          if [ "${{ matrix.compiler }}" = "clang" ]; then
+            echo "CC=clang" >> "$GITHUB_ENV"
+            echo "CXX=clang++" >> "$GITHUB_ENV"
+          else
+            echo "CC=gcc" >> "$GITHUB_ENV"
+            echo "CXX=g++" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DOPENSSL_ROOT_DIR=/opt/openssl \
+            -DPQTLS_BUILD_TESTS=ON \
+            -DPQTLS_ENABLE_WERROR=ON \
+            -DPQTLS_ENABLE_HARDENING=ON
+
+      - name: Build
+        # Warnings are errors here (PQTLS_ENABLE_WERROR above). They are not to
+        # be turned off to make a red build green.
+        run: cmake --build build --parallel "$(nproc)"
+
+      - name: Report the detected capabilities
+        run: |
+          export LD_LIBRARY_PATH=/opt/openssl/lib
+          ./build/pqtls-client --version
+          ./build/pqtls-client capabilities
+
+      - name: Fail if the hybrid profile is unusable
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH=/opt/openssl/lib
+          usable=$(./build/pqtls-client capabilities --json \
+            | python3 -c "import json,sys; caps=json.load(sys.stdin); print(next(p['usable'] for p in caps['profiles'] if p['id']=='hybrid-x25519-mlkem768'))")
+          if [ "$usable" != "True" ]; then
+            echo "::error::hybrid-x25519-mlkem768 is unusable against the pinned OpenSSL"
+            ./build/pqtls-client capabilities
+            exit 1
+          fi
+
+      - name: Upload the binaries
+        if: matrix.compiler == 'gcc' && matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pqtls-binaries-${{ matrix.compiler }}-${{ matrix.build_type }}
+          path: |
+            build/pqtls-client
+            build/pqtls-server
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # The project must also build against a distribution OpenSSL that has no
+  # post-quantum support. The classical baseline must work, and the PQ profiles
+  # must report themselves as unavailable rather than failing the build.
+  # ---------------------------------------------------------------------------
+  build-without-pq:
+    name: system OpenSSL (no PQ support)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build pkg-config libssl-dev
+
+      - name: Configure and build against the system OpenSSL
+        run: |
+          openssl version
+          cmake -S . -B build-system -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPQTLS_BUILD_TESTS=ON \
+            -DPQTLS_ENABLE_WERROR=ON
+          cmake --build build-system --parallel "$(nproc)"
+
+      - name: Confirm PQ profiles fail closed rather than silently degrading
+        run: |
+          set -euo pipefail
+          ./build-system/pqtls-client capabilities
+
+          # The classical baseline must be usable.
+          classical=$(./build-system/pqtls-client capabilities --json \
+            | python3 -c "import json,sys; caps=json.load(sys.stdin); print(next(p['usable'] for p in caps['profiles'] if p['id']=='classical-x25519'))")
+          if [ "$classical" != "True" ]; then
+            echo "::error::the classical baseline is unusable; that is a real failure"
+            exit 1
+          fi
+
+          # The hybrid profile must be reported unavailable WITH a reason.
+          reason=$(./build-system/pqtls-client capabilities --json \
+            | python3 -c "import json,sys; caps=json.load(sys.stdin); e=next(p for p in caps['profiles'] if p['id']=='hybrid-x25519-mlkem768'); print('USABLE' if e['usable'] else (e['blocking_reason'] or 'NO REASON GIVEN'))")
+          echo "hybrid-x25519-mlkem768 on the system OpenSSL: $reason"
+          if [ "$reason" = "NO REASON GIVEN" ]; then
+            echo "::error::an unavailable profile must state why"
+            exit 1
+          fi

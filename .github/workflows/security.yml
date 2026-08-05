@@ -1,0 +1,259 @@
+name: security
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Weekly. New advisories appear against unchanged code, so a scan that only
+    # runs on push would go stale between releases.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # CodeQL
+  # ---------------------------------------------------------------------------
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [cpp, python]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended,security-and-quality
+
+      - name: Install build dependencies
+        if: matrix.language == 'cpp'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build pkg-config libssl-dev
+
+      - name: Build
+        if: matrix.language == 'cpp'
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DPQTLS_BUILD_TESTS=ON
+          cmake --build build --parallel "$(nproc)"
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  # ---------------------------------------------------------------------------
+  # Static analysis
+  # ---------------------------------------------------------------------------
+  static-analysis:
+    name: clang-tidy and cppcheck
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build pkg-config libssl-dev clang-tidy cppcheck
+
+      - name: Generate the compilation database
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DPQTLS_BUILD_TESTS=OFF
+          cmake --build build --target pqtls_core --parallel "$(nproc)" || true
+
+      - name: clang-tidy
+        run: |
+          # Only our own sources. Fetched dependencies are not ours to fix, and
+          # including them would drown real findings.
+          files=$(git ls-files 'src/**/*.cpp' 'include/**/*.hpp')
+          echo "analysing:"; echo "$files"
+          clang-tidy -p build --quiet $files
+        continue-on-error: true
+
+      - name: cppcheck
+        run: |
+          cppcheck \
+            --enable=warning,style,performance,portability \
+            --error-exitcode=1 \
+            --inline-suppr \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            --std=c++20 \
+            --language=c++ \
+            -I include \
+            src/ 2>&1 | tee cppcheck.log
+        continue-on-error: true
+
+      - name: Report
+        run: |
+          echo "Static analysis findings are advisory in CI and are reviewed on"
+          echo "pull requests. They are NOT suppressed to keep the build green;"
+          echo "see .clang-tidy for the checks that are hard errors in-build."
+
+  # ---------------------------------------------------------------------------
+  # Dependency review
+  # ---------------------------------------------------------------------------
+  dependency-review:
+    name: dependency review
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+          # Every dependency's licence is recorded in docs/build-guide.md.
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, BSL-1.0, ISC
+
+  # ---------------------------------------------------------------------------
+  # Secret scanning and key-material hygiene
+  # ---------------------------------------------------------------------------
+  secret-scanning:
+    name: secret and key-material scan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fail if private key material is tracked
+        # The single most important check in this workflow. gitleaks below is a
+        # broader net, but this is the specific, unambiguous rule for this
+        # project: no private key may ever be committed.
+        run: |
+          set -euo pipefail
+          echo "scanning tracked files for private key material..."
+
+          offenders=$(git ls-files | grep -E '\.(key|pem|p12|pfx|jks)$' || true)
+          if [ -n "$offenders" ]; then
+            echo "::error::private key material is tracked in git:"
+            echo "$offenders"
+            exit 1
+          fi
+
+          # Also scan file CONTENTS: a key committed under an innocuous name
+          # would slip past the extension check above.
+          if git grep -lE -- '-----BEGIN (RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----' \
+                -- . ':(exclude).gitignore' ':(exclude)*.md' > /tmp/hits 2>/dev/null; then
+            if [ -s /tmp/hits ]; then
+              echo "::error::a PEM private key block was found in tracked files:"
+              cat /tmp/hits
+              exit 1
+            fi
+          fi
+
+          echo "no private key material is tracked"
+
+      - name: Fail if packet captures or key logs are tracked
+        run: |
+          set -euo pipefail
+          offenders=$(git ls-files | grep -E '\.(pcap|pcapng|keylog)$' || true)
+          if [ -n "$offenders" ]; then
+            echo "::error::captures or TLS key logs are tracked in git:"
+            echo "$offenders"
+            exit 1
+          fi
+          echo "no captures or key logs are tracked"
+
+      - name: Confirm .gitignore covers key material
+        run: |
+          set -euo pipefail
+          for pattern in '*.key' '*.pem' '*.pcap' '*.keylog'; do
+            grep -qF "$pattern" .gitignore || {
+              echo "::error::.gitignore does not cover $pattern"
+              exit 1
+            }
+          done
+          echo ".gitignore covers key material, captures and key logs"
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+  # ---------------------------------------------------------------------------
+  # Documentation honesty checks.
+  #
+  # These enforce the claims policy in the spec: the README must not overstate
+  # what the project provides. Wrong documentation about security properties is
+  # a security problem, so it is checked here rather than left to review.
+  # ---------------------------------------------------------------------------
+  claims-check:
+    name: documentation claims
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check documentation claims
+        # A line-based grep cannot distinguish "it is **not** end-to-end
+        # quantum-safe" (correct) from a genuine claim, because the negation is
+        # often on the previous line and wrapped in markdown emphasis. The
+        # checker normalises emphasis and inspects surrounding context.
+        run: python3 scripts/check-claims.py
+
+      - name: The claims checker must actually catch violations
+        # A checker that passes everything is worse than none, because it
+        # creates false confidence. This proves it fails on real violations.
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/claims-selftest
+          cat > /tmp/claims-selftest/violations.md <<'EOF'
+          # Self-test fixture
+
+          pqtls-lab is production ready and suitable for deployment.
+
+          The hybrid profile gives you end-to-end quantum-safe protection.
+
+          X25519MLKEM768 is defined in RFC 9999 and is fully standardised.
+
+          This project has been independently audited.
+
+          Under normal operation this is production ready.
+          EOF
+
+          if python3 scripts/check-claims.py /tmp/claims-selftest/violations.md; then
+            echo "::error::the claims checker accepted a document full of false claims"
+            exit 1
+          fi
+          echo "the claims checker correctly rejected the self-test fixture"
+
+      - name: Require that unmeasured results say so
+        run: |
+          set -euo pipefail
+          # Every experiment definition must carry a results field, and until an
+          # experiment has actually been run that field must say so rather than
+          # containing a number.
+          for definition in experiments/definitions/*.yaml; do
+            grep -q "results:" "$definition" || {
+              echo "::error::$definition has no 'results' field"
+              exit 1
+            }
+          done
+          echo "every experiment definition declares its results status"

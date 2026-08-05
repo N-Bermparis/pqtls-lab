@@ -1,0 +1,43 @@
+version: 2
+
+# Dependency updates are PROPOSED, never applied automatically.
+#
+# Every C++ dependency in this project is pinned to an exact commit, and the
+# OpenSSL version is pinned with a verified checksum, because a benchmark result
+# is only meaningful alongside the exact libraries that produced it. A
+# dependency bump therefore invalidates previously recorded measurements and
+# must be a deliberate, reviewed act recorded in CHANGELOG.md.
+
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies, github-actions]
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: docker
+    directory: "/docker"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies, docker, needs-reproducibility-review]
+    commit-message:
+      prefix: "docker"
+    # The base image is pinned by digest. A bump changes the image that every
+    # containerised experiment ran on, so it needs the same review as a source
+    # change.
+
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels: [dependencies, python]
+    commit-message:
+      prefix: "python"

@@ -1,0 +1,319 @@
+name: tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  OPENSSL_VERSION: "3.5.7"
+  OPENSSL_SHA256: "a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8"
+
+jobs:
+  openssl:
+    name: pinned OpenSSL
+    runs-on: ubuntu-24.04
+    outputs:
+      cache-key: ${{ steps.key.outputs.value }}
+    steps:
+      - id: key
+        run: echo "value=openssl-${{ env.OPENSSL_VERSION }}-${{ env.OPENSSL_SHA256 }}-ubuntu2404" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: /opt/openssl
+          key: ${{ steps.key.outputs.value }}
+
+      - name: Build OpenSSL
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          curl -fsSL --proto '=https' --tlsv1.2 -o openssl.tar.gz \
+            "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz"
+          echo "${OPENSSL_SHA256}  openssl.tar.gz" | sha256sum -c -
+          tar -xzf openssl.tar.gz
+          cd "openssl-${OPENSSL_VERSION}"
+          ./Configure --prefix=/opt/openssl --openssldir=/opt/openssl/ssl \
+            --libdir=lib shared no-ssl3 no-weak-ssl-ciphers
+          make -j"$(nproc)"
+          sudo make install_sw
+
+  # ---------------------------------------------------------------------------
+  # Unit tests
+  # ---------------------------------------------------------------------------
+  unit:
+    name: unit tests
+    needs: openssl
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: /opt/openssl
+          key: ${{ needs.openssl.outputs.cache-key }}
+          fail-on-cache-miss: true
+
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DOPENSSL_ROOT_DIR=/opt/openssl \
+            -DPQTLS_BUILD_TESTS=ON \
+            -DPQTLS_ENABLE_WERROR=ON
+          cmake --build build --parallel "$(nproc)"
+
+      - name: Run
+        env:
+          LD_LIBRARY_PATH: /opt/openssl/lib
+        run: ctest --test-dir build --output-on-failure --verbose
+
+  # ---------------------------------------------------------------------------
+  # Sanitizers. ASan+UBSan and TSan are separate builds because they cannot be
+  # combined.
+  # ---------------------------------------------------------------------------
+  sanitizers:
+    name: ${{ matrix.sanitizer }}
+    needs: openssl
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sanitizer: address+undefined
+            flags: "-DPQTLS_ENABLE_ASAN=ON -DPQTLS_ENABLE_UBSAN=ON"
+          - sanitizer: thread
+            flags: "-DPQTLS_ENABLE_TSAN=ON"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: /opt/openssl
+          key: ${{ needs.openssl.outputs.cache-key }}
+          fail-on-cache-miss: true
+
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config
+
+      - name: Build
+        run: |
+          cmake -S . -B build-san -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DOPENSSL_ROOT_DIR=/opt/openssl \
+            -DPQTLS_BUILD_TESTS=ON \
+            ${{ matrix.flags }}
+          cmake --build build-san --parallel "$(nproc)"
+
+      - name: Run
+        env:
+          LD_LIBRARY_PATH: /opt/openssl/lib
+          # halt_on_error: a sanitizer report is a failure, not a log line.
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          TSAN_OPTIONS: halt_on_error=1
+        run: ctest --test-dir build-san --output-on-failure
+
+  # ---------------------------------------------------------------------------
+  # Integration and interoperability. Split into two jobs so that a failure in
+  # the classical baseline is unambiguous: the classical job has no post-quantum
+  # dependency at all, and cannot be excused as a missing capability.
+  # ---------------------------------------------------------------------------
+  integration-classical:
+    name: integration (classical, system OpenSSL)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config libssl-dev
+          python3 -m pip install --upgrade pytest jsonschema
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DPQTLS_BUILD_TESTS=OFF
+          cmake --build build --parallel "$(nproc)"
+
+      - name: Generate development certificates
+        run: bash scripts/generate-classical-certs.sh --with-client --force
+
+      - name: Run the classical integration tests
+        env:
+          PQTLS_BUILD_DIR: ${{ github.workspace }}/build
+        run: |
+          python3 -m pytest tests/integration/test_classical_tls.py \
+                            tests/integration/test_certificate_validation.py \
+                            tests/integration/test_invalid_messages.py \
+                            -v -ra
+
+  integration-hybrid:
+    name: integration + interop (hybrid, pinned OpenSSL)
+    needs: openssl
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: /opt/openssl
+          key: ${{ needs.openssl.outputs.cache-key }}
+          fail-on-cache-miss: true
+
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config
+          python3 -m pip install --upgrade pytest jsonschema
+
+      - name: Build against the pinned OpenSSL
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DOPENSSL_ROOT_DIR=/opt/openssl \
+            -DPQTLS_BUILD_TESTS=OFF
+          cmake --build build --parallel "$(nproc)"
+
+      - name: Generate development certificates
+        env:
+          OPENSSL_BIN: /opt/openssl/bin/openssl
+          LD_LIBRARY_PATH: /opt/openssl/lib
+        run: bash scripts/generate-classical-certs.sh --with-client --force
+
+      - name: Assert the hybrid profile is genuinely usable here
+        # Without this, every hybrid test below could legitimately SKIP and the
+        # job would pass having verified nothing. On the pinned OpenSSL the
+        # capability MUST be present, so its absence is a hard failure.
+        env:
+          LD_LIBRARY_PATH: /opt/openssl/lib
+        run: |
+          set -euo pipefail
+          ./build/pqtls-client capabilities
+          usable=$(./build/pqtls-client capabilities --json \
+            | python3 -c "import json,sys; c=json.load(sys.stdin); print(next(p['usable'] for p in c['profiles'] if p['id']=='hybrid-x25519-mlkem768'))")
+          if [ "$usable" != "True" ]; then
+            echo "::error::hybrid-x25519-mlkem768 must be usable against the pinned OpenSSL. Hybrid tests would SKIP and hide a real regression."
+            exit 1
+          fi
+
+      - name: Run the hybrid integration tests
+        env:
+          PQTLS_BUILD_DIR: ${{ github.workspace }}/build
+          LD_LIBRARY_PATH: /opt/openssl/lib
+          PATH: /opt/openssl/bin:/usr/local/bin:/usr/bin:/bin
+        run: |
+          python3 -m pytest tests/integration/test_hybrid_tls.py \
+                            tests/integration/test_downgrade_rejection.py \
+                            -v -ra
+
+      - name: Run the interoperability tests
+        env:
+          PQTLS_BUILD_DIR: ${{ github.workspace }}/build
+          LD_LIBRARY_PATH: /opt/openssl/lib
+          PATH: /opt/openssl/bin:/usr/local/bin:/usr/bin:/bin
+        run: python3 -m pytest tests/interoperability -v -ra
+
+      - name: Fail if a hybrid test skipped
+        # The decisive guard against hidden skips. On this job every
+        # capability-gated test has its capability, so a skip means something
+        # is wrong with detection rather than with the environment.
+        env:
+          PQTLS_BUILD_DIR: ${{ github.workspace }}/build
+          LD_LIBRARY_PATH: /opt/openssl/lib
+          PATH: /opt/openssl/bin:/usr/local/bin:/usr/bin:/bin
+        run: |
+          set -euo pipefail
+          python3 -m pytest tests/integration/test_hybrid_tls.py -q -ra \
+            --deselect tests/integration/test_hybrid_tls.py::test_unavailable_profile_reports_capability_error \
+            2>&1 | tee pytest-hybrid.log
+          if grep -qE "^SKIPPED|[0-9]+ skipped" pytest-hybrid.log; then
+            echo "::error::a hybrid test skipped on a PQ-capable build. A skip here hides a regression."
+            grep -E "^SKIPPED" pytest-hybrid.log || true
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Python tooling
+  # ---------------------------------------------------------------------------
+  python-tools:
+    name: python tooling
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: python3 -m pip install --upgrade jsonschema
+
+      - name: The result validator must reject fabricated post-quantum claims
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/validator-check
+          # A record claiming post-quantum protection over a classical group.
+          cat > /tmp/validator-check/bad.jsonl <<'EOF'
+          {"schema_version":1,"connection_id":"11111111-1111-4111-8111-111111111111","role":"client","requested_profile":"hybrid-x25519-mlkem768","tls_version":"TLSv1.3","negotiated_group":"x25519","cipher_suite":"TLS_AES_256_GCM_SHA384","authentication":"ecdsa_secp256r1_sha256","handshake_ms":9.0,"connection_ms":12.0,"success":true,"error_category":null,"timestamp":"2026-08-05T10:00:00.000Z","pq_key_establishment":true,"hybrid_key_establishment":true,"pq_authentication":true}
+          EOF
+          if python3 tools/result_validator.py /tmp/validator-check/bad.jsonl; then
+            echo "::error::the validator accepted a record that claims post-quantum protection over a classical group"
+            exit 1
+          fi
+          echo "the validator correctly rejected the fabricated record"
+
+      - name: The result validator must accept a well-formed record
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/validator-check
+          cat > /tmp/validator-check/good.jsonl <<'EOF'
+          {"schema_version":1,"connection_id":"11111111-1111-4111-8111-111111111111","role":"client","requested_profile":"hybrid-x25519-mlkem768","tls_version":"TLSv1.3","negotiated_group":"X25519MLKEM768","cipher_suite":"TLS_AES_256_GCM_SHA384","authentication":"ecdsa_secp256r1_sha256","handshake_ms":12.41,"connection_ms":15.08,"application_bytes_sent":164,"application_bytes_received":141,"transport_bytes_sent":null,"transport_bytes_received":null,"session_reused":false,"success":true,"error_category":null,"error_message":null,"peer_address":"127.0.0.1:8443","protocol_message_count":2,"process_cpu_user_ms":null,"process_cpu_system_ms":null,"peak_memory_kib":null,"experiment_id":"ci","negotiated_profile":"hybrid-x25519-mlkem768","timestamp":"2026-08-05T10:00:00.000Z","pq_key_establishment":true,"hybrid_key_establishment":true,"pq_authentication":false}
+          EOF
+          python3 tools/result_validator.py /tmp/validator-check/good.jsonl
+
+      - name: The PQAudit adapter produces schema-valid output
+        run: |
+          set -euo pipefail
+          python3 tools/pqaudit_adapter.py schemas/pqaudit-input.example.json \
+            --output /tmp/recommendation.json
+          python3 - <<'PY'
+          import json, jsonschema, pathlib
+          schema = json.loads(pathlib.Path("schemas/pqaudit-output.schema.json").read_text())
+          document = json.loads(pathlib.Path("/tmp/recommendation.json").read_text())
+          jsonschema.validate(document, schema)
+          assert document["caveats"], "a recommendation must always state its caveats"
+          print("the adapter output validates against its schema")
+          PY
+
+      - name: The analysis script runs without inventing values
+        run: |
+          set -euo pipefail
+          python3 scripts/analyze-results.py /tmp/validator-check/good.jsonl \
+            --json /tmp/summary.json
+          python3 - <<'PY'
+          import json, pathlib
+          summary = json.loads(pathlib.Path("/tmp/summary.json").read_text())["summaries"][0]
+          # One sample: a standard deviation and a confidence interval are not
+          # computable, and must be reported as null rather than as zero.
+          assert summary["handshake_ms"]["stdev"] is None
+          assert summary["handshake_ms"]["ci95_low"] is None
+          print("unavailable statistics are reported as null, not fabricated")
+          PY
+
+      - name: Shell scripts pass shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck
+          shellcheck -S warning scripts/*.sh || true

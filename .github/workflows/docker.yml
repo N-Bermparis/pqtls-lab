@@ -1,0 +1,232 @@
+name: docker
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ["v*"]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify:
+    name: build image and demonstrate a hybrid connection
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          tags: pqtls-lab:ci
+          load: true
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: The image must run as a non-root user
+        run: |
+          set -euo pipefail
+          user=$(docker run --rm --entrypoint id pqtls-lab:ci -un)
+          echo "container user: $user"
+          if [ "$user" = "root" ]; then
+            echo "::error::the image runs as root"
+            exit 1
+          fi
+
+      - name: The image must contain no private key material
+        run: |
+          set -euo pipefail
+          found=$(docker run --rm --entrypoint find pqtls-lab:ci \
+            / -xdev \( -name '*.key' -o -name '*.pem' -o -name '*.p12' \) \
+            -not -path '/opt/openssl/ssl/*' 2>/dev/null || true)
+          if [ -n "$found" ]; then
+            echo "::error::key material was found inside the image:"
+            echo "$found"
+            exit 1
+          fi
+          echo "no private key material is baked into the image"
+
+      - name: Report the image's capabilities
+        run: docker run --rm pqtls-lab:ci capabilities
+
+      - name: The image's OpenSSL must provide the hybrid groups
+        run: |
+          set -euo pipefail
+          usable=$(docker run --rm --entrypoint /usr/local/bin/pqtls-client pqtls-lab:ci \
+            capabilities --json \
+            | python3 -c "import json,sys; c=json.load(sys.stdin); print(next(p['usable'] for p in c['profiles'] if p['id']=='hybrid-x25519-mlkem768'))")
+          if [ "$usable" != "True" ]; then
+            echo "::error::the image cannot provide hybrid-x25519-mlkem768"
+            docker run --rm pqtls-lab:ci capabilities
+            exit 1
+          fi
+
+      - name: The health check must pass
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint /usr/local/bin/pqtls-client pqtls-lab:ci \
+            capabilities --json > /dev/null
+          echo "health check command succeeded"
+
+      - name: Generate development certificates on the host
+        run: bash scripts/generate-classical-certs.sh --with-client --force
+
+      - name: Demonstrate a real hybrid connection between two containers
+        run: |
+          set -euo pipefail
+          docker network create pqtls-ci-net
+
+          docker run -d --name pqtls-ci-server --network pqtls-ci-net \
+            -v "${{ github.workspace }}/certs/classical:/certs:ro" \
+            -e PQTLS_ENV=development \
+            pqtls-lab:ci serve \
+              --listen 0.0.0.0 --port 8443 \
+              --profile hybrid-x25519-mlkem768 \
+              --certificate /certs/server.crt \
+              --private-key /certs/server.key \
+              --log-level info
+
+          # Poll for readiness rather than sleeping a fixed amount.
+          for attempt in $(seq 1 60); do
+            if docker run --rm --network pqtls-ci-net \
+                 -v "${{ github.workspace }}/certs/classical:/certs:ro" \
+                 --entrypoint /usr/local/bin/pqtls-client pqtls-lab:ci \
+                 connect --host pqtls-ci-server --port 8443 \
+                 --server-name pqtls-server \
+                 --profile hybrid-x25519-mlkem768 \
+                 --ca-certificate /certs/ca.crt \
+                 --message '{"type":"ping"}' --json > /tmp/result.json 2>/tmp/result.err; then
+              break
+            fi
+            sleep 1
+          done
+
+          echo "--- server log ---"
+          docker logs pqtls-ci-server || true
+          echo "--- client result ---"
+          cat /tmp/result.json 2>/dev/null || cat /tmp/result.err
+
+          # The connection must have succeeded AND have negotiated the hybrid
+          # group. A successful connection over a classical group would be a
+          # downgrade, and would pass a naive "did it connect?" check.
+          python3 - <<'PY'
+          import json, sys
+          with open("/tmp/result.json") as handle:
+              result = json.load(handle)
+          metrics = result["metrics"]
+          print("negotiated group :", metrics["negotiated_group"])
+          print("tls version      :", metrics["tls_version"])
+          print("pq key exchange  :", metrics["pq_key_establishment"])
+          print("pq authentication:", metrics["pq_authentication"])
+
+          assert metrics["success"] is True, "the connection failed"
+          assert metrics["tls_version"] == "TLSv1.3"
+          assert metrics["negotiated_group"].lower() == "x25519mlkem768", \
+              f"expected the hybrid group, negotiated {metrics['negotiated_group']}"
+          assert metrics["pq_key_establishment"] is True
+          # These profiles authenticate with ECDSA. Claiming otherwise would be
+          # false, so CI asserts the honest value.
+          assert metrics["pq_authentication"] is False, \
+              "an ECDSA certificate must not be reported as post-quantum authentication"
+          print("\nverified: hybrid post-quantum key establishment with classical authentication")
+          PY
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker rm -f pqtls-ci-server 2>/dev/null || true
+          docker network rm pqtls-ci-net 2>/dev/null || true
+
+      - name: Scan the image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: pqtls-lab:ci
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "0"   # advisory: reported, reviewed, not auto-blocking
+        continue-on-error: true
+
+  compose-demo:
+    name: docker compose demonstration
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate development certificates
+        run: bash scripts/generate-classical-certs.sh --with-client --force
+
+      - name: docker compose up
+        working-directory: docker
+        run: |
+          set -euo pipefail
+          docker compose up --build --abort-on-container-exit --exit-code-from pqtls-client
+        continue-on-error: true
+
+      - name: Show the compose logs
+        if: always()
+        working-directory: docker
+        run: docker compose logs || true
+
+      - name: Tear down
+        if: always()
+        working-directory: docker
+        run: docker compose down -v || true
+
+  # ---------------------------------------------------------------------------
+  # Publishing is gated on a release tag AND on credentials being configured.
+  # Without both, nothing is pushed. This is deliberate: an unaudited research
+  # prototype should not appear in a public registry by accident.
+  # ---------------------------------------------------------------------------
+  publish:
+    name: publish (tagged releases only)
+    needs: [build-and-verify, compose-demo]
+    runs-on: ubuntu-24.04
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check whether publishing is configured
+        id: gate
+        run: |
+          if [ -n "${{ secrets.REGISTRY_USERNAME }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::no registry credentials are configured; skipping publication"
+          fi
+
+      - name: Log in to the registry
+        if: steps.gate.outputs.configured == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        if: steps.gate.outputs.configured == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            io.pqtls.status=research-prototype-not-production

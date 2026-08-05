@@ -1,0 +1,118 @@
+name: Experiment request
+description: Propose a measurement to run
+title: "[experiment] "
+labels: [experiment, research, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this to propose a measurement, or to record one you intend to run.
+
+        **Do not put numbers in this issue that have not been measured.** An
+        expectation is fine; state it as an expectation. A figure presented as a
+        result, when it is really a guess, contaminates everything that later
+        cites it.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: The question
+      description: What is the specific, answerable question? Not "is hybrid slow" but "how much does X change Y".
+      placeholder: >-
+        How does the handshake success rate of hybrid-x25519-mlkem768 compare
+        with classical-x25519 at packet-loss rates between 0 and 10 percent?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: research_question
+    attributes:
+      label: Research question
+      options:
+        - RQ1 performance overhead
+        - RQ2 network reliability
+        - RQ3 edge-device feasibility
+        - RQ4 crypto-agility and downgrade prevention
+        - RQ5 authentication overhead
+        - RQ6 connection management and resumption
+    validations:
+      required: true
+
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Expected outcome
+      description: >-
+        What do you expect, and why? Writing this down before the run is what
+        distinguishes a prediction from a post-hoc explanation.
+      placeholder: >-
+        The hybrid ClientHello spans more TCP segments, so its handshake success
+        rate should fall faster with loss than the classical one. Expect the gap
+        to widen non-linearly above roughly 3 percent.
+    validations:
+      required: true
+
+  - type: textarea
+    id: matrix
+    attributes:
+      label: Experiment matrix
+      description: Profiles, connection counts, concurrency levels, payload sizes, network conditions.
+      render: yaml
+      placeholder: |
+        profiles: [classical-x25519, hybrid-x25519-mlkem768]
+        connections: 200
+        concurrency: [1, 10]
+        payloads: [100]
+        conditions:
+          - {loss: "0%"}
+          - {loss: "1%"}
+          - {loss: "5%"}
+    validations:
+      required: true
+
+  - type: textarea
+    id: platform
+    attributes:
+      label: Target platform
+      description: >-
+        Be specific. "A Raspberry Pi" is not reproducible; "Raspberry Pi 5, 8 GB,
+        active cooling, Raspberry Pi OS 64-bit" is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: confounders
+    attributes:
+      label: Known confounders
+      description: >-
+        What could make the result misleading? Thermal throttling, client and
+        server sharing a host, loopback behaviour differing from a real link,
+        a changing surviving population under loss.
+    validations:
+      required: true
+
+  - type: textarea
+    id: interpretation
+    attributes:
+      label: What the result will and will not show
+      description: >-
+        State the limits before running. A loopback MTU experiment says
+        something about how the handshake behaves; it does not say what a real
+        path with middleboxes will do.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Method
+      options:
+        - label: At least 100 connections per cell.
+          required: true
+        - label: Raw per-connection records will be preserved, including failures.
+          required: true
+        - label: System metadata (CPU, OpenSSL version, commit, build type) will be recorded.
+          required: true
+        - label: This issue contains no unmeasured figure presented as a result.
+          required: true
+        - label: An experiment definition will be added under experiments/definitions/.

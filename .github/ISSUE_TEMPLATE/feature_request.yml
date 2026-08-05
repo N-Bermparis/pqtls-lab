@@ -1,0 +1,93 @@
+name: Feature request
+description: Propose a capability or an improvement
+title: "[feature] "
+labels: [enhancement, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        pqtls-lab is a research prototype. The most valuable proposals are the
+        ones that make an experiment possible, make a result more trustworthy,
+        or make a claim easier to verify.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What is difficult or impossible today? Describe the situation, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - TLS policy or profiles
+        - Application protocol
+        - Metrics and measurement
+        - Benchmarking
+        - Network-condition experiments
+        - Packet-capture analysis
+        - Certificates and authentication
+        - Post-quantum authentication (experimental)
+        - Build, packaging or Docker
+        - Documentation
+        - PQAudit integration
+        - Platform support (Raspberry Pi, ARM, other)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: research_question
+    attributes:
+      label: Which research question does this serve?
+      description: See the README. "None" is a valid answer for tooling and ergonomics.
+      options:
+        - RQ1 performance overhead
+        - RQ2 network reliability
+        - RQ3 edge-device feasibility
+        - RQ4 crypto-agility and downgrade prevention
+        - RQ5 authentication overhead
+        - RQ6 connection management and resumption
+        - None - tooling, ergonomics or maintenance
+    validations:
+      required: true
+
+  - type: textarea
+    id: security_impact
+    attributes:
+      label: Security impact
+      description: >-
+        Would this change what the project guarantees, or what it claims? A
+        feature that relaxes a policy, adds a fallback, or introduces a new
+        default needs to say so explicitly here.
+      placeholder: >-
+        e.g. "None: adds an output format." or "Adds an option to permit a
+        classical fallback, which would weaken the downgrade guarantee unless
+        it is off by default and recorded in the metrics."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: This does not require hand-rolling a cryptographic primitive.
+          required: true
+        - label: This does not require disabling or weakening an existing security check.
+        - label: If it does weaken something, I have said so in the security-impact field.
+          required: true

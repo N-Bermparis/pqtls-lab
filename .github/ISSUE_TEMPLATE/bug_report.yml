@@ -1,0 +1,110 @@
+name: Bug report
+description: Something behaves incorrectly
+title: "[bug] "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem.
+
+        **If this is a security vulnerability, do not open an issue.** See
+        [SECURITY.md](../blob/main/SECURITY.md) for private reporting.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: What did you observe, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The exact commands, in order. Include the full command lines.
+      placeholder: |
+        1. scripts/generate-classical-certs.sh
+        2. ./build/pqtls-server serve --profile hybrid-x25519-mlkem768 ...
+        3. ./build/pqtls-client connect --profile hybrid-x25519-mlkem768 ...
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: capabilities
+    attributes:
+      label: Output of `pqtls-client capabilities`
+      description: >-
+        This is the single most useful thing you can attach. Most reports come
+        down to a profile that is unavailable on the host, and this shows that
+        immediately.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: openssl
+    attributes:
+      label: OpenSSL version
+      description: Output of `openssl version`. Say whether it is the system one or a pinned build.
+      placeholder: "OpenSSL 3.5.7 (pinned, /opt/openssl)"
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: "Ubuntu 24.04 on x86-64 / WSL2 / Raspberry Pi 5, Raspberry Pi OS 64-bit"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: pqtls-lab version
+      description: Output of `pqtls-client --version`.
+      placeholder: "pqtls-lab 0.2.0 (commit abc123def456, RelWithDebInfo, GNU 13.2.0)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Security profile involved
+      options:
+        - classical-x25519
+        - classical-p256
+        - hybrid-x25519-mlkem768
+        - hybrid-p256-mlkem768
+        - hybrid-p384-mlkem1024
+        - pure-mlkem768 (experimental)
+        - hybrid-pq-auth (experimental)
+        - several / not profile-specific
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >-
+        Run both sides with `--log-level debug` and paste the output.
+
+        **Redact anything sensitive first.** Never paste private keys or the
+        contents of a TLS key-log file.
+      render: text
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I ran `scripts/verify-environment.sh` and attached anything relevant.
+        - label: I confirmed the profile is reported as usable by `pqtls-client capabilities`.
+        - label: This is not a security vulnerability (those go to SECURITY.md).
+          required: true
+        - label: I have not included any private key or session-secret material.
+          required: true
