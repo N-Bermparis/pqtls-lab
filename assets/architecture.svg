@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" width="900" height="560" role="img" aria-label="pqtls-lab architecture: client and server share a core library; policy is enforced at four gates.">
+  <title>pqtls-lab architecture</title>
+  <desc>The pqtls-client and pqtls-server binaries share the pqtls_core library. All cryptography comes from OpenSSL. Policy is enforced at four gates: group configuration, certificate verification, negotiated-group verification, and message validation.</desc>
+
+  <style>
+    .bg      { fill: #ffffff; }
+    .box     { fill: #f4f7fb; stroke: #3b5b78; stroke-width: 1.5; rx: 6; }
+    .core    { fill: #eaf2fb; stroke: #24557f; stroke-width: 1.5; rx: 6; }
+    .policy  { fill: #fdf2e6; stroke: #a4632a; stroke-width: 1.8; rx: 6; }
+    .ext     { fill: #eef3ee; stroke: #4a6b4a; stroke-width: 1.5; rx: 6; }
+    .group   { fill: none; stroke: #b6c2ce; stroke-width: 1.2; stroke-dasharray: 5 4; rx: 10; }
+    .t       { font-family: "DejaVu Sans", "Segoe UI", Arial, sans-serif; fill: #1e2a35; }
+    .h       { font-size: 15px; font-weight: 700; }
+    .lbl     { font-size: 12.5px; font-weight: 600; }
+    .sm      { font-size: 10.5px; fill: #4a5b6b; }
+    .gl      { font-size: 11px; font-weight: 700; fill: #6b7a89; letter-spacing: 0.6px; }
+    .arrow   { stroke: #3b5b78; stroke-width: 1.6; fill: none; marker-end: url(#a); }
+    .tls     { stroke: #a4632a; stroke-width: 2.2; fill: none; stroke-dasharray: 7 4; marker-end: url(#b); marker-start: url(#b); }
+  </style>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b5b78"/>
+    </marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#a4632a"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="900" height="560"/>
+  <text class="t h" x="24" y="30">pqtls-lab architecture</text>
+  <text class="t sm" x="24" y="48">Research prototype. Not audited. Not production software.</text>
+
+  <!-- Client -->
+  <rect class="group" x="24" y="66" width="250" height="228"/>
+  <text class="t gl" x="36" y="86">PQTLS-CLIENT</text>
+  <rect class="box" x="38" y="96" width="222" height="34"/>
+  <text class="t lbl" x="50" y="112">CLI</text>
+  <text class="t sm" x="50" y="125">connect · benchmark · capabilities</text>
+  <rect class="box" x="38" y="140" width="222" height="34"/>
+  <text class="t lbl" x="50" y="156">Config</text>
+  <text class="t sm" x="50" y="169">defaults → file → env → flags</text>
+  <rect class="box" x="38" y="184" width="222" height="34"/>
+  <text class="t lbl" x="50" y="200">SecurityProfile</text>
+  <text class="t sm" x="50" y="213">immutable · validated at construction</text>
+  <rect class="box" x="38" y="228" width="222" height="34"/>
+  <text class="t lbl" x="50" y="244">TlsContext</text>
+  <text class="t sm" x="50" y="257">RAII over SSL_CTX</text>
+
+  <!-- Server -->
+  <rect class="group" x="626" y="66" width="250" height="228"/>
+  <text class="t gl" x="638" y="86">PQTLS-SERVER</text>
+  <rect class="box" x="640" y="96" width="222" height="34"/>
+  <text class="t lbl" x="652" y="112">CLI</text>
+  <text class="t sm" x="652" y="125">serve · capabilities · validate-config</text>
+  <rect class="box" x="640" y="140" width="222" height="34"/>
+  <text class="t lbl" x="652" y="156">SecurityProfile</text>
+  <text class="t sm" x="652" y="169">same catalogue, same validation</text>
+  <rect class="box" x="640" y="184" width="222" height="34"/>
+  <text class="t lbl" x="652" y="200">TlsContext</text>
+  <text class="t sm" x="652" y="213">RAII over SSL_CTX</text>
+  <rect class="box" x="640" y="228" width="222" height="34"/>
+  <text class="t lbl" x="652" y="244">PqTlsServer</text>
+  <text class="t sm" x="652" y="257">bounded thread pool + accept queue</text>
+
+  <!-- TLS link -->
+  <path class="tls" d="M 274 176 L 626 176"/>
+  <text class="t lbl" x="360" y="166" fill="#a4632a">TLS 1.3 · ALPN pqtls1</text>
+  <text class="t sm" x="360" y="196">framed JSON: uint32 length + UTF-8 payload</text>
+
+  <!-- Policy gates -->
+  <rect class="group" x="292" y="228" width="316" height="182"/>
+  <text class="t gl" x="304" y="248">POLICY ENFORCEMENT — BOTH PEERS</text>
+
+  <rect class="policy" x="304" y="258" width="292" height="32"/>
+  <text class="t lbl" x="316" y="272">1 · Offer only the profile's groups</text>
+  <text class="t sm" x="316" y="285">nothing else is on the wire to steer towards</text>
+
+  <rect class="policy" x="304" y="296" width="292" height="32"/>
+  <text class="t lbl" x="316" y="310">2 · Verify the certificate + hostname</text>
+  <text class="t sm" x="316" y="323">first: an unverified peer's claims mean nothing</text>
+
+  <rect class="policy" x="304" y="334" width="292" height="32"/>
+  <text class="t lbl" x="316" y="348">3 · Verify the NEGOTIATED group</text>
+  <text class="t sm" x="316" y="361">violation → terminate before any app data</text>
+
+  <rect class="policy" x="304" y="372" width="292" height="32"/>
+  <text class="t lbl" x="316" y="386">4 · Validate every message</text>
+  <text class="t sm" x="316" y="399">size · UTF-8 · JSON · depth · type</text>
+
+  <!-- External -->
+  <rect class="group" x="24" y="316" width="250" height="120"/>
+  <text class="t gl" x="36" y="336">EXTERNAL</text>
+  <rect class="ext" x="38" y="346" width="222" height="34"/>
+  <text class="t lbl" x="50" y="362">OpenSSL 3.x</text>
+  <text class="t sm" x="50" y="375">ALL cryptography. None implemented here.</text>
+  <rect class="ext" x="38" y="390" width="222" height="34"/>
+  <text class="t lbl" x="50" y="406">nlohmann/json · yaml-cpp · spdlog</text>
+  <text class="t sm" x="50" y="419">pinned by exact commit</text>
+
+  <!-- Metrics -->
+  <rect class="group" x="626" y="316" width="250" height="120"/>
+  <text class="t gl" x="638" y="336">MEASUREMENT</text>
+  <rect class="core" x="640" y="346" width="222" height="34"/>
+  <text class="t lbl" x="652" y="362">ConnectionMetrics → JSONL</text>
+  <text class="t sm" x="652" y="375">append-only · flushed per record</text>
+  <rect class="core" x="640" y="390" width="222" height="34"/>
+  <text class="t lbl" x="652" y="406">validator · analysis</text>
+  <text class="t sm" x="652" y="419">rejects unsupported claims</text>
+
+  <!-- Arrows -->
+  <path class="arrow" d="M 149 130 L 149 140"/>
+  <path class="arrow" d="M 149 174 L 149 184"/>
+  <path class="arrow" d="M 149 218 L 149 228"/>
+  <path class="arrow" d="M 751 130 L 751 140"/>
+  <path class="arrow" d="M 751 174 L 751 184"/>
+  <path class="arrow" d="M 751 218 L 751 228"/>
+  <path class="arrow" d="M 149 262 L 149 346"/>
+  <path class="arrow" d="M 751 262 L 751 346"/>
+  <path class="arrow" d="M 751 380 L 751 390"/>
+  <path class="arrow" d="M 260 245 L 304 268"/>
+  <path class="arrow" d="M 640 245 L 596 268"/>
+
+  <!-- Footer -->
+  <rect x="24" y="456" width="852" height="80" rx="6" fill="#fdf2e6" stroke="#a4632a" stroke-width="1.5"/>
+  <text class="t lbl" x="40" y="478" fill="#a4632a">Key establishment is not authentication</text>
+  <text class="t sm" x="40" y="497">The hybrid profiles provide post-quantum KEY ESTABLISHMENT (ML-KEM). Server AUTHENTICATION uses a classical ECDSA signature.</text>
+  <text class="t sm" x="40" y="513">Such a connection resists harvest-now-decrypt-later, but it is NOT end-to-end quantum-safe. Metrics record the two as separate fields,</text>
+  <text class="t sm" x="40" y="529">alongside a third for hybrid-versus-pure, so the properties can never be collapsed into a single misleading claim.</text>
+</svg>
