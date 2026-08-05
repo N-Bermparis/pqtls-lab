@@ -56,7 +56,7 @@ jobs:
     needs: openssl
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/cache@v4
         with:
@@ -100,7 +100,7 @@ jobs:
             flags: "-DPQTLS_ENABLE_TSAN=ON"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/cache@v4
         with:
@@ -139,7 +139,7 @@ jobs:
     name: integration (classical, system OpenSSL)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - run: |
           sudo apt-get update
@@ -170,7 +170,7 @@ jobs:
     needs: openssl
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/cache@v4
         with:
@@ -256,7 +256,7 @@ jobs:
     name: python tooling
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - run: python3 -m pip install --upgrade jsonschema
 
