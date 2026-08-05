@@ -1,0 +1,42 @@
+schema_version: 1
+
+experiment:
+  id: baseline
+  title: Classical versus hybrid post-quantum TLS 1.3, unimpaired network
+  research_questions: [RQ1, RQ4]
+  description: >-
+    The reference measurement. No emulated impairment, single host, loopback.
+    Every other experiment in this directory is interpreted relative to this
+    one, so it must be re-run whenever the hardware, the OpenSSL build or the
+    compiler changes.
+
+matrix:
+  profiles:
+    - classical-x25519
+    - classical-p256
+    - hybrid-x25519-mlkem768
+    - hybrid-p256-mlkem768
+  connections: 100
+  concurrency: [1, 10, 50]
+  payloads: [100, 1024]
+  warmup: 10
+  session_resumption: false
+
+network:
+  emulation: none
+
+expected_outcomes:
+  - Every hybrid connection reports negotiated_group equal to the profile's group.
+  - No connection reports pq_key_establishment=true with a classical group.
+  - pq_authentication is false throughout: these profiles use ECDSA certificates.
+
+results: >-
+  Results not yet measured.
+
+  Run:
+    python3 scripts/run-benchmarks.py --experiment-id baseline
+    python3 scripts/analyze-results.py experiments/results --experiment-id baseline
+
+  Do not fill this field in by hand. It is populated from the analysis output of
+  an actual run, and an unmeasured number here would invalidate every comparison
+  that cites it.

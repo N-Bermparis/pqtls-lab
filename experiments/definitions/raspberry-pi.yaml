@@ -1,0 +1,106 @@
+schema_version: 1
+
+experiment:
+  id: raspberry-pi
+  title: Hybrid post-quantum TLS feasibility on a constrained ARM64 device
+  research_questions: [RQ3, RQ1]
+  description: >-
+    Whether hybrid post-quantum TLS is practical on the class of device that
+    actually terminates TLS at the edge. A cost that is negligible on a desktop
+    core can be decisive on a Raspberry Pi, and edge devices are also where the
+    slowest links and smallest MTUs are found.
+
+platforms:
+  # The same matrix is run on each platform and compared. Record the actual
+  # hardware for each; do not reuse figures across revisions.
+  - id: desktop
+    description: x86-64 development machine
+    role: reference
+  - id: vm
+    description: Virtual machine on the same host as `desktop`
+    role: comparison
+  - id: raspberry-pi
+    description: Raspberry Pi 4 or 5, 64-bit Raspberry Pi OS or Ubuntu Server ARM64
+    role: constrained target
+
+matrix:
+  profiles:
+    - classical-x25519
+    - hybrid-x25519-mlkem768
+    - hybrid-p256-mlkem768
+  connections: 100
+  concurrency: [1, 4]      # kept at or below the core count of a Pi
+  payloads: [100, 1024]
+  warmup: 10
+
+network:
+  emulation: none
+
+procedure: |
+  On EACH platform, from a clean checkout:
+
+    1. scripts/bootstrap-ubuntu.sh
+       On a Pi the pinned OpenSSL build is the slow step. It is a full compile
+       of OpenSSL on the device; expect it to take considerably longer than on
+       a desktop. Do not quote a duration that was not measured on the specific
+       hardware being reported.
+
+    2. scripts/build.sh --release
+
+    3. scripts/verify-environment.sh
+       Record the output verbatim. If the PQ groups are unavailable the
+       hybrid rows are SKIPPED, and the report must say so.
+
+    4. Record the thermal and power state BEFORE the run:
+         vcgencmd measure_temp           # Raspberry Pi OS
+         cat /sys/class/thermal/thermal_zone0/temp
+         vcgencmd get_throttled          # 0x0 means no throttling has occurred
+
+    5. python3 scripts/run-benchmarks.py \
+         --experiment-id rpi-<platform> \
+         --profiles classical-x25519 hybrid-x25519-mlkem768 hybrid-p256-mlkem768 \
+         --connections 100 --concurrency 1 4 --payloads 100 1024
+
+    6. Record the thermal state AFTER the run, and `vcgencmd get_throttled`
+       again. A non-zero value means the device throttled and the timings
+       describe a throttled device, which must be stated.
+
+measurements_of_interest:
+  - handshake_ms percentiles per profile per platform
+  - process CPU time per handshake
+  - peak resident memory
+  - SoC temperature before and after
+  - throttling state before and after
+  - build duration of the pinned OpenSSL, measured not estimated
+
+caveats:
+  - >-
+    Thermal throttling is the dominant confounder on a Pi. A run that throttles
+    produces timings for a throttled device. Always report get_throttled and the
+    cooling arrangement (passive, heatsink, fan, case).
+  - >-
+    SD-card storage varies enormously between cards. Timings dominated by I/O
+    are card measurements, not TLS measurements.
+  - >-
+    The power supply matters. An undervolted Pi throttles regardless of
+    temperature; get_throttled reports this too.
+  - >-
+    Energy consumption requires external instrumentation (an inline USB power
+    meter or a bench supply with logging). It is not measurable from software on
+    the device, and no energy figure should appear in results without naming the
+    instrument used.
+  - >-
+    Cross-compilation is deliberately not used here. Building on the device
+    avoids a whole class of "is the toolchain the difference?" questions.
+
+expected_outcomes:
+  - The absolute hybrid overhead in milliseconds should be larger on the Pi than on the desktop.
+  - Whether the RELATIVE overhead is also larger is the actual research question, and it is not assumed here.
+
+results: >-
+  Results not yet measured.
+
+  No Raspberry Pi figures appear anywhere in this repository until they have
+  been measured on identified hardware. Inventing plausible numbers for a
+  constrained device would be worse than having none, because a reader has no
+  way to tell them apart.

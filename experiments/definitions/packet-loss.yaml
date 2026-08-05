@@ -1,0 +1,68 @@
+schema_version: 1
+
+experiment:
+  id: packet-loss
+  title: Hybrid post-quantum TLS handshake reliability under packet loss
+  research_questions: [RQ2]
+  description: >-
+    A handshake spread over more TCP segments has more chances to lose one. If
+    the larger post-quantum ClientHello adds segments, loss should penalise the
+    hybrid profile more than the classical one, and the penalty should grow
+    faster than linearly with the loss rate.
+
+matrix:
+  profiles:
+    - classical-x25519
+    - hybrid-x25519-mlkem768
+  connections: 200        # raised above the usual 100: loss makes the outcome noisier
+  concurrency: [1, 10]
+  payloads: [100]
+  warmup: 10
+
+network:
+  emulation: netem
+  interface: lo
+  conditions:
+    - { loss: "0%" }
+    - { loss: "0.5%" }
+    - { loss: "1%" }
+    - { loss: "3%" }
+    - { loss: "5%" }
+    - { loss: "10%" }
+    - { loss: "1%", loss_correlation: "25%" }    # bursty loss
+    - { loss: "5%", loss_correlation: "50%" }
+
+procedure: |
+  For each condition:
+    1. sudo scripts/apply-netem.sh --interface lo --loss <loss> [--loss-correlation <c>]
+    2. python3 scripts/run-benchmarks.py \
+         --experiment-id loss-<loss> \
+         --profiles classical-x25519 hybrid-x25519-mlkem768 \
+         --connections 200 --concurrency 1 10 --payloads 100
+    3. sudo scripts/reset-netem.sh --interface lo
+
+measurements_of_interest:
+  - handshake success rate per profile per loss rate
+  - handshake_ms distribution among the connections that DID succeed
+  - error_category breakdown: timeout versus network versus handshake
+  - retransmission counts from a parallel packet capture
+
+caveats:
+  - >-
+    Failures are the measurement here, not noise. Do not filter them out: a
+    success-only summary at 10% loss describes a different experiment than the
+    one that was run.
+  - >-
+    Comparing mean handshake time across loss rates is misleading on its own,
+    because the surviving population changes. Always report the success rate
+    beside it.
+  - >-
+    netem loss is uniformly random unless a correlation is given. Real networks
+    lose packets in bursts, which is why the correlated conditions are included.
+
+expected_outcomes:
+  - Success rate falls with loss for both profiles.
+  - If hybrid handshakes span more segments, their success rate should fall faster. Confirm the segment count from a capture rather than assuming it.
+
+results: >-
+  Results not yet measured.

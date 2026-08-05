@@ -1,0 +1,62 @@
+schema_version: 1
+
+experiment:
+  id: latency
+  title: Handshake cost of hybrid post-quantum TLS under emulated round-trip delay
+  research_questions: [RQ2]
+  description: >-
+    A post-quantum key share enlarges the ClientHello. Where that pushes the
+    handshake into additional round trips, the added delay is multiplied rather
+    than added. This experiment separates the constant computational cost of
+    ML-KEM from the round-trip-dependent cost of carrying a larger message.
+
+matrix:
+  profiles:
+    - classical-x25519
+    - hybrid-x25519-mlkem768
+  connections: 100
+  concurrency: [1, 10]
+  payloads: [100]
+  warmup: 10
+
+network:
+  emulation: netem
+  interface: lo
+  conditions:
+    - { delay: "0ms" }
+    - { delay: "20ms" }
+    - { delay: "50ms" }
+    - { delay: "100ms" }
+    - { delay: "250ms" }
+    - { delay: "500ms" }
+    - { delay: "50ms", jitter: "10ms" }
+    - { delay: "100ms", jitter: "20ms" }
+
+procedure: |
+  For each condition:
+    1. sudo scripts/apply-netem.sh --interface lo --delay <delay> [--jitter <jitter>]
+    2. python3 scripts/run-benchmarks.py \
+         --experiment-id latency-<delay> \
+         --profiles classical-x25519 hybrid-x25519-mlkem768 \
+         --connections 100 --concurrency 1 10 --payloads 100
+    3. sudo scripts/reset-netem.sh --interface lo
+
+  Always reset between conditions. A leftover qdisc silently contaminates the
+  next measurement, and the contamination is invisible in the results.
+
+caveats:
+  - >-
+    netem on the loopback interface applies delay to the egress path only, so a
+    round trip sees the configured delay approximately once rather than twice.
+    State which convention was used when reporting.
+  - >-
+    Loopback removes real NIC, driver and switching behaviour. Absolute figures
+    are not comparable with a physical link; the classical-versus-hybrid ratio
+    at each delay is the meaningful quantity.
+
+expected_outcomes:
+  - The absolute difference between classical and hybrid should be roughly constant with delay if the handshake stays within the same number of round trips.
+  - A step change at some delay would indicate an extra round trip, which is the interesting result.
+
+results: >-
+  Results not yet measured.

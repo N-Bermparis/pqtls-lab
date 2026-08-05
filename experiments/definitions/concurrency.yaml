@@ -1,0 +1,64 @@
+schema_version: 1
+
+experiment:
+  id: concurrency
+  title: Server-side cost of hybrid post-quantum TLS under concurrent load
+  research_questions: [RQ1, RQ6]
+  description: >-
+    ML-KEM key generation and decapsulation cost CPU on both peers. Under
+    concurrency that cost competes for cores, so a difference invisible at a
+    single connection can dominate at scale. This experiment also measures how
+    much of that cost session resumption removes.
+
+matrix:
+  profiles:
+    - classical-x25519
+    - hybrid-x25519-mlkem768
+  connections: 500
+  concurrency: [1, 10, 50, 100]
+  payloads: [100, 1024]
+  warmup: 25
+  session_resumption: true     # each cell is run with and without resumption
+
+network:
+  emulation: none
+
+procedure: |
+  python3 scripts/run-benchmarks.py \
+    --experiment-id concurrency \
+    --profiles classical-x25519 hybrid-x25519-mlkem768 \
+    --connections 500 --concurrency 1 10 50 100 \
+    --payloads 100 1024 \
+    --warmup 25 --session-resumption
+
+  Record the server's max_connections setting: once concurrency exceeds it the
+  server refuses connections rather than queueing them, and the refusals appear
+  as client-side failures. That is correct behaviour, but it must not be read as
+  a post-quantum performance result.
+
+measurements_of_interest:
+  - handshake_ms percentiles per concurrency level per profile
+  - process_cpu_user_ms and process_cpu_system_ms on both peers
+  - the ratio of resumed to full handshake cost, per profile
+  - failure counts and their error categories
+  - connections_rejected on the server
+
+caveats:
+  - >-
+    Client and server share the same host in the default setup, so they compete
+    for the same cores. This inflates both figures at high concurrency. Run the
+    peers on separate hosts before quoting absolute throughput.
+  - >-
+    Each benchmark thread owns its own client, its own SSL_CTX and its own
+    session cache. A resumption rate below 100% at high concurrency is expected
+    and is not a failure.
+  - >-
+    Peak memory is sampled per connection from the whole process, so under
+    concurrency the figure reflects the process, not one connection.
+
+expected_outcomes:
+  - The hybrid handshake costs more CPU per connection than the classical one; the gap should widen with concurrency.
+  - Resumption should reduce the hybrid penalty substantially, because a resumed handshake performs no fresh key encapsulation.
+
+results: >-
+  Results not yet measured.

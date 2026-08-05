@@ -1,0 +1,74 @@
+schema_version: 1
+
+experiment:
+  id: mtu
+  title: Effect of path MTU on hybrid post-quantum TLS handshakes
+  research_questions: [RQ2]
+  description: >-
+    The most likely place for hybrid post-quantum TLS to break in practice. An
+    ML-KEM-768 key share pushes the ClientHello past 1500 bytes, so it no longer
+    fits in a single Ethernet frame. Where a path has a smaller MTU, or where
+    fragmentation is dropped, the handshake can fail in ways that classical TLS
+    never encounters.
+
+matrix:
+  profiles:
+    - classical-x25519
+    - hybrid-x25519-mlkem768
+    - hybrid-p384-mlkem1024    # largest key share; the worst case
+  connections: 100
+  concurrency: [1]
+  payloads: [100]
+  warmup: 10
+
+network:
+  emulation: netem
+  interface: lo
+  conditions:
+    - { mtu: 576 }     # IPv4 minimum reassembly buffer
+    - { mtu: 1280 }    # IPv6 minimum link MTU
+    - { mtu: 1500 }    # standard Ethernet
+    - { mtu: 9000 }    # jumbo frames, where supported
+
+procedure: |
+  For each MTU:
+    1. sudo scripts/apply-netem.sh --interface lo --mtu <mtu>
+    2. sudo scripts/capture-packets.sh --interface lo --port 18443 \
+         --output captures/mtu-<mtu>.pcap --snaplen 0 &
+    3. python3 scripts/run-benchmarks.py --experiment-id mtu-<mtu> \
+         --profiles classical-x25519 hybrid-x25519-mlkem768 hybrid-p384-mlkem1024 \
+         --connections 100 --concurrency 1 --payloads 100
+    4. python3 tools/pcap_metrics.py captures/mtu-<mtu>.pcap \
+         --json experiments/results/mtu-<mtu>-pcap.json
+    5. sudo scripts/reset-netem.sh --interface lo
+
+  Capture with --snaplen 0. A truncated capture produces wrong ClientHello
+  sizes rather than an error, which is the one failure mode that would quietly
+  invalidate this entire experiment.
+
+measurements_of_interest:
+  - ClientHello size per profile, in bytes
+  - number of TCP segments carrying the handshake
+  - IP fragmentation count
+  - handshake success rate per MTU
+  - whether any profile fails outright at MTU 576 or 1280
+
+caveats:
+  - >-
+    Loopback MTU behaviour is not identical to a physical path. A real path
+    additionally involves PMTU discovery and middleboxes that may drop ICMP
+    "fragmentation needed", which loopback cannot reproduce. Treat these as
+    indicative and validate on real hardware before concluding anything about
+    deployment.
+  - >-
+    The ClientHello size depends on which extensions the client sends, not only
+    on the key share. Measure it; do not compute it from the ML-KEM parameter
+    sizes.
+
+expected_outcomes:
+  - Classical ClientHello fits in one segment at every tested MTU.
+  - The hybrid ClientHello requires more than one segment at MTU 1280 and below.
+  - Any outright failure is the headline result and should be reported as such.
+
+results: >-
+  Results not yet measured.
