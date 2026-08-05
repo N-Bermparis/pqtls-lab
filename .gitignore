@@ -1,0 +1,82 @@
+# ---------------------------------------------------------------------------
+# Build output
+# ---------------------------------------------------------------------------
+build/
+build-*/
+out/
+cmake-build-*/
+_deps/
+CMakeUserPresets.json
+compile_commands.json
+.cache/
+
+# ---------------------------------------------------------------------------
+# Cryptographic material.
+#
+# SECURITY: private keys must never enter version control. The patterns below
+# are deliberately broad. Development certificates are regenerated on demand by
+# scripts/generate-classical-certs.sh; there is no reason to commit them.
+# ---------------------------------------------------------------------------
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.der
+*.csr
+*.srl
+certs/**/*.crt
+certs/**/*.key
+certs/**/*.pem
+certs/**/*.csr
+certs/**/*.srl
+certs/**/index.txt*
+certs/**/serial*
+!certs/**/.gitkeep
+!certs/README.md
+
+# TLS key-log material (development only, never committed).
+*.keylog
+sslkeylog*.txt
+SSLKEYLOGFILE*
+
+# ---------------------------------------------------------------------------
+# Packet captures. May contain traffic that is not ours to publish.
+# ---------------------------------------------------------------------------
+*.pcap
+*.pcapng
+captures/
+
+# ---------------------------------------------------------------------------
+# Experiment output. Raw results are large and machine specific; publish them
+# deliberately as a release artefact instead of committing them by accident.
+# ---------------------------------------------------------------------------
+experiments/results/**
+!experiments/results/.gitkeep
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# ---------------------------------------------------------------------------
+# Editors / OS
+# ---------------------------------------------------------------------------
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Generated measurement artefacts from the certificate scripts.
+certs/**/size-measurements.json
