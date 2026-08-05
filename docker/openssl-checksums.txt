@@ -1,0 +1,28 @@
+# Pinned OpenSSL source archives for pqtls-lab.
+#
+# Format: sha256sum output. Consume with:
+#     grep "openssl-${VERSION}.tar.gz$" openssl-checksums.txt | sha256sum -c -
+#
+# PROVENANCE
+#   These are the values published as `openssl-<version>.tar.gz.sha256`
+#   alongside each release at:
+#     https://github.com/openssl/openssl/releases/download/openssl-<version>/
+#
+#   They were retrieved from that URL and confirmed on 2026-08-05.
+#
+# POLICY
+#   - Docker builds and scripts/bootstrap-ubuntu.sh MUST verify the archive
+#     against the entry here BEFORE extracting it.
+#   - Never use a floating tag or an unpinned "latest" download.
+#   - When bumping the version, fetch the new .sha256 from the release page,
+#     add a line here, update the date above, and record the change in
+#     CHANGELOG.md. Do not edit a hash in place.
+#
+# VERSION NOTES
+#   3.5.x is the first OpenSSL series providing ML-KEM and the hybrid TLS
+#   groups (X25519MLKEM768, SecP256r1MLKEM768, SecP384r1MLKEM1024) that the
+#   post-quantum profiles depend on. Anything older builds the project fine but
+#   reports every PQ profile as unavailable.
+
+a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8  openssl-3.5.7.tar.gz
+967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99  openssl-3.5.4.tar.gz

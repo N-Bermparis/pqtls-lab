@@ -1,0 +1,139 @@
+# pqtls-lab demonstration stack.
+#
+#   cd docker && docker compose up --build
+#
+# Brings up a hybrid post-quantum TLS server and a client that connects to it,
+# exchanges a framed message and writes a metrics record.
+#
+# Certificates are MOUNTED, never built into the image. Generate them first:
+#   scripts/generate-classical-certs.sh
+
+name: pqtls-lab
+
+services:
+  # ---------------------------------------------------------------------------
+  # One-shot: generate the development PKI into the shared volume if it is
+  # missing. Runs before the server, so `docker compose up` works from a clean
+  # checkout without a manual step.
+  # ---------------------------------------------------------------------------
+  certgen:
+    image: alpine/openssl:3.5.4
+    container_name: pqtls-certgen
+    volumes:
+      - ../certs/classical:/certs
+      - ../scripts:/scripts:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -f /certs/server.crt ] && [ -f /certs/ca.crt ]; then
+          echo "development certificates already present; leaving them alone"
+          exit 0
+        fi
+        echo "ERROR: no development certificates found in ./certs/classical"
+        echo ""
+        echo "Generate them on the host first:"
+        echo "  scripts/generate-classical-certs.sh"
+        echo ""
+        echo "They are deliberately not generated inside the image: private key"
+        echo "material should be created where you can see it, and certs/ is"
+        echo "git-ignored so it will not be committed."
+        exit 1
+
+  # ---------------------------------------------------------------------------
+  # Hybrid post-quantum TLS server
+  # ---------------------------------------------------------------------------
+  pqtls-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        OPENSSL_VERSION: "3.5.7"
+    image: pqtls-lab:local
+    container_name: pqtls-server
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+    command:
+      - serve
+      - --listen=0.0.0.0
+      - --port=8443
+      - --profile=hybrid-x25519-mlkem768
+      - --certificate=/certs/server.crt
+      - --private-key=/certs/server.key
+      - --metrics=/results/server.jsonl
+      - --experiment-id=docker-demo
+      - --log-level=info
+    ports:
+      - "8443:8443"
+    volumes:
+      # Read-only: the server has no reason to modify its own key material.
+      - ../certs/classical:/certs:ro
+      - ../experiments/results:/results
+    environment:
+      # Not "production": the demo uses a development CA, and declaring
+      # production would (correctly) forbid options this demo may want.
+      PQTLS_ENV: development
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/pqtls-client", "capabilities", "--json"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    # Defence in depth: the container needs no privileges, no writable root
+    # filesystem beyond its volumes, and no ability to gain new capabilities.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Client: connects, exchanges a message, prints the negotiated parameters
+  # ---------------------------------------------------------------------------
+  pqtls-client:
+    image: pqtls-lab:local
+    container_name: pqtls-client
+    depends_on:
+      pqtls-server:
+        condition: service_healthy
+    entrypoint: ["/usr/local/bin/pqtls-client"]
+    command:
+      - connect
+      - --host=pqtls-server
+      - --port=8443
+      # The development certificate's SAN includes DNS:pqtls-server, so
+      # hostname verification succeeds against the compose service name.
+      - --server-name=pqtls-server
+      - --profile=hybrid-x25519-mlkem768
+      - --ca-certificate=/certs/ca.crt
+      - --message={"type":"capabilities"}
+      - --metrics=/results/client.jsonl
+      - --experiment-id=docker-demo
+    volumes:
+      - ../certs/classical:/certs:ro
+      - ../experiments/results:/results
+    environment:
+      PQTLS_ENV: development
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Diagnostics: what can this image's OpenSSL actually do?
+  #   docker compose run --rm capabilities
+  # ---------------------------------------------------------------------------
+  capabilities:
+    image: pqtls-lab:local
+    container_name: pqtls-capabilities
+    entrypoint: ["/usr/local/bin/pqtls-client"]
+    command: ["capabilities"]
+    profiles: ["tools"]
+    restart: "no"

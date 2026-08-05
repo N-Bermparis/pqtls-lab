@@ -1,0 +1,82 @@
+# syntax=docker/dockerfile:1.7
+#
+# Pinned OpenSSL base image for pqtls-lab.
+#
+# Built separately from the application image so that a long OpenSSL compile is
+# not repeated on every source change, and so the OpenSSL version in use is a
+# single, auditable fact rather than something buried in a build log.
+#
+# PINNING POLICY (spec section 18)
+#   - An exact OpenSSL release, never a floating tag.
+#   - The source archive checksum is verified BEFORE extraction.
+#   - The base image is pinned by digest, so "ubuntu:24.04" cannot change
+#     underneath a reproduction of an experiment.
+
+# ubuntu:24.04, pinned by manifest-list digest.
+#
+# Retrieved from registry-1.docker.io and confirmed on 2026-08-05. Refresh with:
+#   docker buildx imagetools inspect ubuntu:24.04 --format '{{.Manifest.Digest}}'
+FROM ubuntu@sha256:561618e2c15bf2397621dd04f96926663a3b5616c189cf7e38db7e82f5c538ea AS openssl-build
+
+ARG OPENSSL_VERSION=3.5.7
+ARG OPENSSL_SHA256=a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8
+ARG OPENSSL_PREFIX=/opt/openssl
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        perl \
+        make \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Download, verify, THEN extract. An archive that fails the checksum is never
+# unpacked, let alone compiled and installed.
+RUN curl -fsSL --proto '=https' --tlsv1.2 \
+        -o "openssl-${OPENSSL_VERSION}.tar.gz" \
+        "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" \
+    && echo "${OPENSSL_SHA256}  openssl-${OPENSSL_VERSION}.tar.gz" | sha256sum -c - \
+    && tar -xzf "openssl-${OPENSSL_VERSION}.tar.gz" \
+    && rm "openssl-${OPENSSL_VERSION}.tar.gz"
+
+WORKDIR /build/openssl-${OPENSSL_VERSION}
+
+RUN ./Configure \
+        --prefix="${OPENSSL_PREFIX}" \
+        --openssldir="${OPENSSL_PREFIX}/ssl" \
+        --libdir=lib \
+        shared \
+        no-ssl3 \
+        no-weak-ssl-ciphers \
+        enable-ec_nistp_64_gcc_128 \
+    && make -j"$(nproc)" \
+    && make install_sw \
+    && rm -rf /build
+
+# ---------------------------------------------------------------------------
+# Verification stage.
+#
+# Fails the build if the resulting OpenSSL cannot actually do what the
+# post-quantum profiles need. Better to fail here than to ship an image that
+# reports every PQ profile as unavailable at run time.
+# ---------------------------------------------------------------------------
+FROM openssl-build AS openssl-verify
+
+ARG OPENSSL_PREFIX=/opt/openssl
+ENV LD_LIBRARY_PATH=${OPENSSL_PREFIX}/lib
+
+RUN set -eux; \
+    "${OPENSSL_PREFIX}/bin/openssl" version; \
+    groups="$("${OPENSSL_PREFIX}/bin/openssl" list -tls-groups)"; \
+    echo "$groups"; \
+    for required in X25519MLKEM768 SecP256r1MLKEM768 SecP384r1MLKEM1024; do \
+        echo "$groups" | grep -q "$required" \
+            || { echo "FATAL: the pinned OpenSSL lacks the TLS group $required" >&2; exit 1; }; \
+    done; \
+    echo "verified: the pinned OpenSSL provides the hybrid post-quantum TLS groups"
+
+FROM openssl-verify AS final
