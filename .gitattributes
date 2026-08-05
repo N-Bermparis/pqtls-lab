@@ -1,0 +1,78 @@
+# Line-ending policy.
+#
+# This matters more than it looks. A shell script checked out with CRLF fails on
+# Linux with a confusing "bad interpreter: /usr/bin/env bash^M", and a Dockerfile
+# RUN step inherits the same problem. Since the project targets Linux but may be
+# edited on Windows, LF is forced for everything executable or parsed.
+
+# Normalise text files in the repository, and let git detect what is text.
+* text=auto eol=lf
+
+# ---------------------------------------------------------------------------
+# Must be LF. Non-negotiable: these are executed or parsed by tools that treat
+# CR as part of the token.
+# ---------------------------------------------------------------------------
+*.sh            text eol=lf
+*.bash          text eol=lf
+*.py            text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.json          text eol=lf
+*.cmake         text eol=lf
+CMakeLists.txt  text eol=lf
+Dockerfile      text eol=lf
+Dockerfile.*    text eol=lf
+Makefile        text eol=lf
+*.cff           text eol=lf
+VERSION         text eol=lf
+.gitignore      text eol=lf
+.gitattributes  text eol=lf
+.clang-format   text eol=lf
+.clang-tidy     text eol=lf
+.editorconfig   text eol=lf
+
+# Source and documentation.
+*.c             text eol=lf
+*.cc            text eol=lf
+*.cpp           text eol=lf
+*.h             text eol=lf
+*.hpp           text eol=lf
+*.in            text eol=lf
+*.md            text eol=lf
+*.txt           text eol=lf
+*.svg           text eol=lf
+
+# ---------------------------------------------------------------------------
+# Binary. Never normalise, never diff as text.
+# ---------------------------------------------------------------------------
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.pdf           binary
+*.ico           binary
+
+# Packet captures and cryptographic material are git-ignored, but mark them
+# binary anyway so that an accidental `git add -f` cannot mangle one or splash
+# it across a diff.
+*.pcap          binary
+*.pcapng        binary
+*.der           binary
+*.p12           binary
+*.pfx           binary
+
+# ---------------------------------------------------------------------------
+# Export-ignore: excluded from `git archive` release tarballs. A source release
+# does not need CI configuration or the development container.
+# ---------------------------------------------------------------------------
+.github/        export-ignore
+.devcontainer/  export-ignore
+.gitattributes  export-ignore
+.gitignore      export-ignore
+
+# ---------------------------------------------------------------------------
+# Linguist: keep language statistics representative of the actual work.
+# ---------------------------------------------------------------------------
+docs/*          linguist-documentation
+assets/*        linguist-documentation
+schemas/*       linguist-language=JSON
