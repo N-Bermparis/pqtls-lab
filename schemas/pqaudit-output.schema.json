@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nbermparis/pqtls-lab/schemas/pqaudit-output.schema.json",
+  "title": "pqtls-lab profile recommendation",
+  "description": "Produced by tools/pqaudit_adapter.py. A recommendation of which profile to TEST an asset against, plus the tests to run. It is not a migration plan and carries no assurance that migrating is safe.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "asset_id",
+    "recommended_profile",
+    "authentication_transition",
+    "classical_fallback_allowed",
+    "required_tests"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "asset_id": { "type": "string", "minLength": 1 },
+    "recommended_profile": {
+      "type": "string",
+      "description": "A pqtls-lab profile id. Its availability must still be confirmed with 'pqtls-client capabilities' on the target host.",
+      "examples": [
+        "hybrid-x25519-mlkem768",
+        "hybrid-p256-mlkem768",
+        "hybrid-p384-mlkem1024"
+      ]
+    },
+    "authentication_transition": {
+      "type": "object",
+      "required": ["current", "recommended_initial", "recommended_experimental"],
+      "additionalProperties": false,
+      "description": "Authentication is tracked separately from key establishment throughout. recommended_initial is always a classical signature scheme.",
+      "properties": {
+        "current": { "type": "string" },
+        "recommended_initial": {
+          "type": "string",
+          "description": "Classical. There is no public CA issuing post-quantum certificates for general use.",
+          "examples": ["ECDSA-P256", "ECDSA-P384"]
+        },
+        "recommended_experimental": {
+          "type": "string",
+          "description": "Capability-gated experiment only. Not a deployment option.",
+          "examples": ["ML-DSA-65"]
+        }
+      }
+    },
+    "classical_fallback_allowed": {
+      "type": "boolean",
+      "description": "When false, a client without the hybrid group FAILS to connect rather than downgrading."
+    },
+    "required_tests": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "examples": [
+          "certificate-validation",
+          "mtu",
+          "packet-loss",
+          "legacy-client-compatibility",
+          "downgrade-rejection",
+          "concurrency",
+          "latency"
+        ]
+      }
+    },
+    "rationale": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Why this profile was chosen, in plain language."
+    },
+    "caveats": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What this recommendation does NOT guarantee. Always non-empty in practice."
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "source": "pqaudit",
+  "asset_id": "server-001",
+  "asset_description": "Public API gateway, terminates TLS for customer traffic",
+  "tls": {
+    "minimum_version": "TLS1.2",
+    "key_exchange": "ECDHE-P256",
+    "certificate_algorithm": "RSA-2048",
+    "cipher_suites": [
+      "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+      "TLS_AES_256_GCM_SHA384"
+    ]
+  },
+  "quantum_risk": {
+    "hndl_level": "high",
+    "migration_priority": "critical",
+    "data_sensitivity_years": 15
+  },
+  "constraints": {
+    "legacy_clients_present": true,
+    "embedded_device": false
+  }
+}

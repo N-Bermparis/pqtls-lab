@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nbermparis/pqtls-lab/schemas/pqaudit-input.schema.json",
+  "title": "PQAudit asset record consumed by pqtls-lab",
+  "description": "Describes an asset's OBSERVED TLS configuration and its assessed quantum risk. This is input to tools/pqaudit_adapter.py; it asserts nothing about what the asset should become.",
+  "type": "object",
+  "required": ["schema_version", "asset_id", "tls"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "source": {
+      "type": "string",
+      "description": "Origin of the record, e.g. \"pqaudit\"."
+    },
+    "asset_id": { "type": "string", "minLength": 1 },
+    "asset_description": { "type": "string" },
+    "tls": {
+      "type": "object",
+      "required": ["minimum_version", "key_exchange", "certificate_algorithm"],
+      "additionalProperties": false,
+      "properties": {
+        "minimum_version": {
+          "type": "string",
+          "examples": ["TLS1.2", "TLS1.3"]
+        },
+        "maximum_version": { "type": "string" },
+        "key_exchange": {
+          "type": "string",
+          "description": "Observed key establishment, e.g. \"ECDHE-P256\", \"X25519\", \"DHE-2048\".",
+          "examples": ["ECDHE-P256", "ECDHE-P384", "X25519"]
+        },
+        "certificate_algorithm": {
+          "type": "string",
+          "description": "Observed certificate signature algorithm. This is AUTHENTICATION, not key establishment.",
+          "examples": ["RSA-2048", "RSA-4096", "ECDSA-P256"]
+        },
+        "cipher_suites": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "quantum_risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hndl_level": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"],
+          "description": "Harvest-now-decrypt-later exposure: how damaging it would be if today's traffic were decrypted years from now."
+        },
+        "migration_priority": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"]
+        },
+        "data_sensitivity_years": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How long the data must stay confidential. The primary driver of hndl_level."
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "legacy_clients_present": { "type": "boolean" },
+        "max_handshake_bytes": { "type": "integer", "minimum": 0 },
+        "embedded_device": { "type": "boolean" }
+      }
+    }
+  }
+}

@@ -1,0 +1,105 @@
+# pqtls-lab experiment definition.
+#
+#   python3 scripts/run-benchmarks.py --config config/experiments.example.yaml
+#
+# A definition names the matrix, not the results. Nothing in this repository
+# contains measured numbers until an experiment has actually been run.
+
+schema_version: 1
+
+experiment:
+  id: baseline-2026-001
+  title: Classical versus hybrid post-quantum TLS 1.3 handshake cost
+  research_questions:
+    - RQ1   # performance overhead of hybrid PQ TLS versus classical
+    - RQ4   # crypto-agility without silent downgrade
+  description: >-
+    Establishes the reference comparison between classical and hybrid
+    post-quantum key establishment on a single host with no emulated network
+    impairment. Every other experiment is interpreted relative to this one.
+
+# ---------------------------------------------------------------------------
+# The matrix. Profiles that this host cannot provide are recorded as SKIPPED
+# with the reason; they are never dropped and never counted as passes.
+# ---------------------------------------------------------------------------
+matrix:
+  profiles:
+    - classical-x25519
+    - classical-p256
+    - hybrid-x25519-mlkem768
+    - hybrid-p256-mlkem768
+
+  # Spec minimum is 100 connections per cell.
+  connections: 100
+
+  concurrency:
+    - 1
+    - 10
+    - 50
+
+  # Application payload sizes in bytes: 100 B, 1 KiB, 1 MiB, 10 MiB.
+  # The two large sizes measure record-layer throughput rather than handshake
+  # cost; keep them in a separate run if wall-clock time matters.
+  payloads:
+    - 100
+    - 1024
+
+  messages_per_connection: 1
+
+  # Discarded connections per cell, run before measurement starts.
+  warmup: 10
+
+  # Also measure each cell with TLS session resumption (RQ6).
+  session_resumption: false
+
+  # Experimental profiles (pure-mlkem768, hybrid-pq-auth) are excluded unless
+  # this is true.
+  allow_experimental: false
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+endpoints:
+  host: 127.0.0.1
+  port: 18443
+  server_name: localhost
+  certificate: certs/classical/server.crt
+  private_key: certs/classical/server.key
+  ca_certificate: certs/classical/ca.crt
+
+# ---------------------------------------------------------------------------
+# Network conditions. Empty means no emulation: the baseline runs on an
+# unimpaired loopback. See experiments/definitions/ for the impaired variants.
+# ---------------------------------------------------------------------------
+network:
+  emulation: none
+
+output:
+  results_dir: experiments/results
+  # Raw per-connection records are never deleted or overwritten. Summaries are
+  # derived from them and can always be recomputed.
+  preserve_raw: true
+  formats:
+    - jsonl     # raw, one record per connection
+    - csv       # summary
+    - json      # summary
+
+# ---------------------------------------------------------------------------
+# Reproducibility. run-benchmarks.py records these automatically into the
+# experiment manifest; they are listed here so the requirement is explicit.
+# ---------------------------------------------------------------------------
+reproducibility:
+  record:
+    - cpu_model
+    - cpu_cores_logical
+    - cpu_cores_physical
+    - memory_total_kib
+    - os_release
+    - kernel
+    - openssl_runtime_version
+    - openssl_providers
+    - git_commit
+    - git_dirty
+    - build_type
+    - compiler
+    - config_hash

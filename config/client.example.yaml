@@ -1,0 +1,70 @@
+# pqtls-lab client configuration.
+#
+#   pqtls-client connect --config config/client.example.yaml
+#
+# PRECEDENCE (lowest to highest)
+#   built-in defaults  ->  this file  ->  environment  ->  command line
+
+common:
+  # The profile the client will enforce. If the server negotiates a group this
+  # profile does not permit, the connection is TERMINATED after the handshake
+  # and recorded as a tls-policy failure. It is never silently accepted.
+  profile: hybrid-x25519-mlkem768
+
+  profiles_file: config/profiles.yaml
+
+  # Trust anchor for verifying the SERVER certificate. Without it the system
+  # trust store is used, which will not contain the development CA.
+  ca_certificate: certs/classical/ca.crt
+
+  # Client identity for mutual TLS. Leave empty unless the server requires it.
+  certificate: ""
+  private_key: ""
+
+  metrics: experiments/results/client.jsonl
+  experiment_id: baseline-2026-001
+
+  max_frame_size: 1048576
+  handshake_timeout_ms: 10000
+  io_timeout_ms: 30000
+
+  output_format: human        # human | json
+  log_level: info
+
+  # ---------------------------------------------------------------------------
+  # DEVELOPMENT ONLY. Both are refused when PQTLS_ENV=production.
+  # ---------------------------------------------------------------------------
+  insecure_development_mode: false
+  keylog_file: ""
+
+client:
+  host: localhost
+  port: 8443
+
+  # SNI value AND the name checked against the certificate's subjectAltName.
+  # Defaults to `host` when empty. Connecting to 127.0.0.1 while verifying
+  # "localhost" requires setting this explicitly.
+  server_name: localhost
+
+  # Inline JSON message body. The envelope fields (protocol_version,
+  # message_id, timestamp) are filled in when absent.
+  message: '{"type":"ping"}'
+
+  # Alternative to `message`. Mutually exclusive with it.
+  message_file: ""
+
+  # -- benchmark subcommand ---------------------------------------------------
+  connections: 1
+  concurrency: 1
+
+  # Discarded connections run before measurement begins.
+  warmup_connections: 0
+
+  messages_per_connection: 1
+
+  # Attempt TLS session resumption. Relevant to RQ6: how much of the
+  # post-quantum handshake cost persistent connections avoid.
+  reuse_session: false
+
+  # Where benchmark records are appended. Required by `benchmark`.
+  benchmark_output: experiments/results/benchmark.jsonl

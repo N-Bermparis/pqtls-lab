@@ -1,0 +1,68 @@
+# pqtls-lab server configuration.
+#
+#   pqtls-server serve --config config/server.example.yaml
+#
+# PRECEDENCE (lowest to highest)
+#   built-in defaults  ->  this file  ->  environment  ->  command line
+#
+# Unknown keys produce a warning and are ignored. Unknown keys in a *profile*
+# definition are a hard error; see config/profiles.yaml.
+
+common:
+  # Which security profile to enforce. Confirm it is usable on the host first:
+  #   pqtls-server capabilities
+  profile: hybrid-x25519-mlkem768
+
+  # Optional. Extends or overrides the built-in profile catalogue.
+  profiles_file: config/profiles.yaml
+
+  # Server identity. Generate with scripts/generate-classical-certs.sh
+  certificate: certs/classical/server.crt
+  private_key: certs/classical/server.key
+
+  # Trust anchor for verifying CLIENT certificates. Only needed for mutual TLS.
+  ca_certificate: certs/classical/ca.crt
+
+  # One JSONL record per connection. Appended, never truncated.
+  metrics: experiments/results/server.jsonl
+  experiment_id: baseline-2026-001
+
+  # Largest application frame accepted, in bytes. Default 1 MiB.
+  # Raising this raises the memory a single connection can make us buffer.
+  max_frame_size: 1048576
+
+  handshake_timeout_ms: 10000
+  io_timeout_ms: 30000
+
+  output_format: human        # human | json
+  log_level: info             # trace | debug | info | warn | error | off
+
+  # ---------------------------------------------------------------------------
+  # DEVELOPMENT ONLY. Both are refused when PQTLS_ENV=production.
+  # ---------------------------------------------------------------------------
+  # Disables peer verification. Never enable outside local development.
+  insecure_development_mode: false
+
+  # Writes TLS traffic secrets in the clear for Wireshark. The destination is
+  # git-ignored. Leave empty unless you are actively analysing a capture.
+  keylog_file: ""
+
+server:
+  listen: 0.0.0.0
+  port: 8443
+
+  # Bounds BOTH the worker pool and the accept queue. Connections beyond this
+  # are closed immediately rather than queued without limit, so a connection
+  # burst cannot grow memory without bound.
+  max_connections: 256
+
+  backlog: 128
+  idle_timeout_ms: 60000
+
+  # Messages accepted on one connection before it is closed. Stops a single
+  # peer from occupying a worker indefinitely.
+  max_messages_per_connection: 1024
+
+  # Mutual TLS. Requires ca_certificate above. A client that presents no
+  # certificate fails the handshake rather than connecting unauthenticated.
+  require_client_certificate: false

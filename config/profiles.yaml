@@ -1,0 +1,202 @@
+# pqtls-lab security profiles.
+#
+# These mirror the profiles compiled into the binaries (see
+# src/common/security_profile.cpp). Passing --profiles-file with this file
+# reproduces the built-in catalogue; edit it to add or override a profile.
+#
+# VALIDATION
+#   Unknown keys are REJECTED, not ignored. A typo in a profile definition
+#   fails the load rather than silently leaving a different policy in effect.
+#
+# TERMINOLOGY - these are three different things and are never merged:
+#   groups          -> KEY ESTABLISHMENT. What ML-KEM affects.
+#   authentication  -> IDENTITY. What ML-DSA would affect.
+#   cipher_suites   -> RECORD PROTECTION. Symmetric, unaffected by either.
+#
+# A profile with a hybrid group and an ECDSA certificate provides post-quantum
+# key establishment and classical authentication. It is not "quantum-safe TLS".
+
+schema_version: 1
+
+profiles:
+  # ---------------------------------------------------------------------------
+  # Classical baselines. These exist to be measured against, not to be
+  # recommended. allow_classical is true because a classical group is the whole
+  # point of the profile.
+  # ---------------------------------------------------------------------------
+  - id: classical-x25519
+    description: Classical TLS 1.3 baseline using X25519 key establishment
+    tls:
+      minimum_version: TLS1.3
+      maximum_version: TLS1.3
+    groups:
+      - X25519
+    cipher_suites:
+      - TLS_AES_256_GCM_SHA384
+      - TLS_CHACHA20_POLY1305_SHA256
+      - TLS_AES_128_GCM_SHA256
+    authentication:
+      type: ecdsa-p256
+      require_client_certificate: false
+    fallback:
+      allow_classical: true
+    experimental: false
+
+  - id: classical-p256
+    description: Classical TLS 1.3 baseline using NIST P-256 key establishment
+    tls:
+      minimum_version: TLS1.3
+      maximum_version: TLS1.3
+    groups:
+      - secp256r1
+    cipher_suites:
+      - TLS_AES_256_GCM_SHA384
+      - TLS_CHACHA20_POLY1305_SHA256
+      - TLS_AES_128_GCM_SHA256
+    authentication:
+      type: ecdsa-p256
+      require_client_certificate: false
+    fallback:
+      allow_classical: true
+    experimental: false
+
+  # ---------------------------------------------------------------------------
+  # Hybrid post-quantum key establishment.
+  #
+  # allow_classical is false throughout. Only the hybrid group is offered, so
+  # there is nothing to fall back to; the flag makes the post-handshake check
+  # reject a classical group if one somehow appeared.
+  # ---------------------------------------------------------------------------
+  - id: hybrid-x25519-mlkem768
+    description: >-
+      Primary profile: hybrid X25519 + ML-KEM-768 key establishment with ECDSA
+      P-256 authentication. Post-quantum key establishment only; authentication
+      remains classical.
+    tls:
+      minimum_version: TLS1.3
+      maximum_version: TLS1.3
+    groups:
+      - X25519MLKEM768
+    cipher_suites:
+      - TLS_AES_256_GCM_SHA384
+      - TLS_CHACHA20_POLY1305_SHA256
+      - TLS_AES_128_GCM_SHA256
+    authentication:
+      type: ecdsa-p256
+      require_client_certificate: false
+    fallback:
+      allow_classical: false
+    experimental: false
+
+  - id: hybrid-p256-mlkem768
+    description: >-
+      Secondary profile: hybrid NIST P-256 + ML-KEM-768. Useful where the
+      classical half must stay within the NIST curve family.
+    tls:
+      minimum_version: TLS1.3
+      maximum_version: TLS1.3
+    groups:
+      - SecP256r1MLKEM768
+    cipher_suites:
+      - TLS_AES_256_GCM_SHA384
+      - TLS_CHACHA20_POLY1305_SHA256
+      - TLS_AES_128_GCM_SHA256
+    authentication:
+      type: ecdsa-p256
+      require_client_certificate: false
+    fallback:
+      allow_classical: false
+    experimental: false
+
+  - id: hybrid-p384-mlkem1024
+    description: >-
+      High-security experiment: hybrid P-384 + ML-KEM-1024 with ECDSA P-384.
+      Requires certificates generated with --curve secp384r1.
+    tls:
+      minimum_version: TLS1.3
+      maximum_version: TLS1.3
+    groups:
+      - SecP384r1MLKEM1024
+    # Only the 384-bit suite: pairing a 256-bit AEAD with a 1024-parameter KEM
+    # would make the record layer the weakest link in the profile.
+    cipher_suites:
+      - TLS_AES_256_GCM_SHA384
+    authentication:
+      type: ecdsa-p384
+      require_client_certificate: false
+    fallback:
+      allow_classical: false
+    experimental: false
+
+  # ---------------------------------------------------------------------------
+  # Experimental. Disabled by default in the benchmark matrix; opt in with
+  # --allow-experimental.
+  # ---------------------------------------------------------------------------
+  - id: pure-mlkem768
+    description: >-
+      EXPERIMENTAL: standalone ML-KEM-768 with no classical component. Included
+      to measure the cost of the classical half of a hybrid, not as a
+      recommendation. A standalone ML-KEM group is not covered by a finalised
+      TLS specification.
+    tls:
+      minimum_version: TLS1.3
+      maximum_version: TLS1.3
+    groups:
+      - MLKEM768
+    cipher_suites:
+      - TLS_AES_256_GCM_SHA384
+      - TLS_CHACHA20_POLY1305_SHA256
+      - TLS_AES_128_GCM_SHA256
+    authentication:
+      type: ecdsa-p256
+      require_client_certificate: false
+    fallback:
+      allow_classical: false
+    experimental: true
+
+  - id: hybrid-pq-auth
+    description: >-
+      EXPERIMENTAL: hybrid X25519 + ML-KEM-768 key establishment with ML-DSA-65
+      authentication. The only profile in which BOTH key establishment and
+      authentication are post-quantum. Requires ML-DSA support in the runtime
+      OpenSSL and certificates from scripts/generate-pq-certs.sh, which chain to
+      a private CA and are not accepted anywhere else.
+    tls:
+      minimum_version: TLS1.3
+      maximum_version: TLS1.3
+    groups:
+      - X25519MLKEM768
+    cipher_suites:
+      - TLS_AES_256_GCM_SHA384
+      - TLS_CHACHA20_POLY1305_SHA256
+      - TLS_AES_128_GCM_SHA256
+    authentication:
+      type: ml-dsa-65
+      require_client_certificate: false
+    fallback:
+      allow_classical: false
+    experimental: true
+
+  # ---------------------------------------------------------------------------
+  # Mutual TLS variant of the primary profile.
+  # ---------------------------------------------------------------------------
+  - id: hybrid-x25519-mlkem768-mtls
+    description: >-
+      Primary hybrid profile with mutual TLS. The server requires and verifies a
+      client certificate; generate one with
+      scripts/generate-classical-certs.sh --with-client.
+    tls:
+      minimum_version: TLS1.3
+      maximum_version: TLS1.3
+    groups:
+      - X25519MLKEM768
+    cipher_suites:
+      - TLS_AES_256_GCM_SHA384
+      - TLS_CHACHA20_POLY1305_SHA256
+      - TLS_AES_128_GCM_SHA256
+    authentication:
+      type: ecdsa-p256
+      require_client_certificate: true
+    fallback:
+      allow_classical: false
+    experimental: false
