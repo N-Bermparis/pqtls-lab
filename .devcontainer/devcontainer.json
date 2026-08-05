@@ -1,0 +1,59 @@
+{
+  "name": "pqtls-lab",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "..",
+    "args": {
+      "OPENSSL_VERSION": "3.5.7"
+    }
+  },
+
+  "workspaceFolder": "/workspaces/pqtls-lab",
+
+  "runArgs": [
+    // NET_ADMIN and NET_RAW enable `tc netem` and packet capture inside the
+    // container, which is the whole point of doing the network experiments
+    // here rather than on the host: the shaping stays contained.
+    "--cap-add=NET_ADMIN",
+    "--cap-add=NET_RAW"
+  ],
+
+  "containerEnv": {
+    "PQTLS_ENV": "development",
+    "OPENSSL_ROOT_DIR": "/opt/openssl",
+    "LD_LIBRARY_PATH": "/opt/openssl/lib"
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "ms-python.python",
+        "redhat.vscode-yaml",
+        "timonwong.shellcheck",
+        "bierner.markdown-mermaid"
+      ],
+      "settings": {
+        "cmake.configureArgs": [
+          "-DOPENSSL_ROOT_DIR=/opt/openssl",
+          "-DPQTLS_BUILD_TESTS=ON"
+        ],
+        "cmake.buildDirectory": "${workspaceFolder}/build/relwithdebinfo",
+        "C_Cpp.default.compileCommands": "${workspaceFolder}/build/relwithdebinfo/compile_commands.json",
+        "C_Cpp.default.cppStandard": "c++20",
+        "editor.formatOnSave": true,
+        "files.insertFinalNewline": true,
+        "files.trimTrailingWhitespace": true,
+        "python.testing.pytestEnabled": true,
+        "python.testing.pytestArgs": ["tests"],
+        "[cpp]": { "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd" }
+      }
+    }
+  },
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "remoteUser": "vscode"
+}
