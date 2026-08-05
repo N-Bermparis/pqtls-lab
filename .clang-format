@@ -1,0 +1,42 @@
+---
+Language: Cpp
+BasedOnStyle: Google
+Standard: c++20
+
+AccessModifierOffset: -4
+AlignAfterOpenBracket: Align
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments: false
+BinPackParameters: false
+BreakBeforeBraces: Attach
+ColumnLimit: 100
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+DerivePointerAlignment: false
+FixNamespaceComments: true
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^"pqtls/'
+    Priority: 1
+  - Regex: '^<openssl/'
+    Priority: 3
+  - Regex: '^<(nlohmann|spdlog|yaml-cpp|catch2)/'
+    Priority: 4
+  - Regex: '^<.*\.h>'
+    Priority: 5
+  - Regex: '^<.*>'
+    Priority: 6
+  - Regex: '.*'
+    Priority: 2
+IndentCaseLabels: true
+IndentWidth: 4
+NamespaceIndentation: None
+PointerAlignment: Left
+ReflowComments: true
+SeparateDefinitionBlocks: Always
+SortIncludes: CaseSensitive
+SpaceAfterTemplateKeyword: false
+SpacesBeforeTrailingComments: 2
