@@ -1,6 +1,7 @@
 # Code owners for pqtls-lab.
 #
-# @nbermparis is the current maintainer. Add reviewers as the project grows.
+# Replace @nbermparis with the maintainer's GitHub handle, and add reviewers as
+# the project grows.
 
 # Default owner for everything.
 *                               @nbermparis
