@@ -85,16 +85,16 @@ echo
 
 echo "TLS groups (probed, not assumed)"
 if have "${OPENSSL_BIN}"; then
-    GROUPS="$(${OPENSSL_BIN} list -tls-groups 2>/dev/null || true)"
+    TLS_GROUPS="$(${OPENSSL_BIN} list -tls-groups -tls1_3 2>/dev/null || true)"
     for group in X25519 secp256r1 secp384r1; do
-        if echo "${GROUPS}" | grep -qi "\b${group}\b"; then
+        if echo "${TLS_GROUPS}" | grep -qi "\b${group}\b"; then
             pass "${group} (classical)"
         else
             fail "${group} is missing; the classical baseline needs it"
         fi
     done
     for group in X25519MLKEM768 SecP256r1MLKEM768 SecP384r1MLKEM1024 MLKEM768; do
-        if echo "${GROUPS}" | grep -q "${group}"; then
+        if echo "${TLS_GROUPS}" | grep -q "${group}"; then
             pass "${group} (post-quantum)"
         else
             PQ_AVAILABLE=0
