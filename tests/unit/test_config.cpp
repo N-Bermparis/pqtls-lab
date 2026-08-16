@@ -267,7 +267,7 @@ TEST_CASE("concurrency cannot exceed the connection count", "[config][validation
     CHECK_THROWS_AS(ConfigLoader::validate(config), ConfigurationError);
 }
 
-TEST_CASE("--message and --message-file are mutually exclusive", "[config][validation]") {
+TEST_CASE("message and message-file options are mutually exclusive", "[config][validation]") {
     auto config = valid_client_config();
     config.message = R"({"type":"ping"})";
     config.message_file = "/tmp/message.json";
