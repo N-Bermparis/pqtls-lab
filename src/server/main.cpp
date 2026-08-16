@@ -243,16 +243,16 @@ int main(int argc, char** argv) {
     try {
         const pqtls::cli::Arguments args = pqtls::cli::parse(argc, argv, kFlags);
 
+        if (args.has("version")) {
+            std::cout << pqtls::version_banner() << '\n';
+            return static_cast<int>(pqtls::ExitCode::Success);
+        }
+
         if (args.has("help") || args.command == "help" || args.command.empty()) {
             print_usage();
             return static_cast<int>(args.command.empty() && !args.has("help")
                                         ? pqtls::ExitCode::ConfigurationError
                                         : pqtls::ExitCode::Success);
-        }
-
-        if (args.has("version")) {
-            std::cout << pqtls::version_banner() << '\n';
-            return static_cast<int>(pqtls::ExitCode::Success);
         }
 
         pqtls::cli::reject_unknown_options(args, kAcceptedOptions);
