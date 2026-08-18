@@ -80,3 +80,4 @@ desktop.ini
 
 # Generated measurement artefacts from the certificate scripts.
 certs/**/size-measurements.json
+runtime/

@@ -1,0 +1,13 @@
+pqtls-lab
+Copyright 2026 Nikolaos Bermparis
+
+pqtls-lab is a Post-Quantum TLS 1.3 research laboratory originally
+designed and developed by Nikolaos Bermparis.
+
+Project repository:
+https://github.com/N-Bermparis/pqtls-lab
+
+Licensed under the Apache License, Version 2.0.
+
+For preferred academic and research citation information, see:
+CITATION.cff
