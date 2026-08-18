@@ -2,10 +2,10 @@
 
 **A crypto-agile TLS 1.3 client and server for measuring the real cost of hybrid post-quantum key establishment.**
 
-[![Build](https://github.com/N-Bermparis/pqtls-lab/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/N-Bermparis/pqtls-lab/actions/workflows/build.yml)
-[![Tests](https://github.com/N-Bermparis/pqtls-lab/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/N-Bermparis/pqtls-lab/actions/workflows/tests.yml)
-[![Security](https://github.com/N-Bermparis/pqtls-lab/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/N-Bermparis/pqtls-lab/actions/workflows/security.yml)
-[![Docker](https://github.com/N-Bermparis/pqtls-lab/actions/workflows/docker.yml/badge.svg?branch=main)](https://github.com/N-Bermparis/pqtls-lab/actions/workflows/docker.yml)
+[![Build](https://img.shields.io/badge/build-CMake%20%2B%20Ninja-064F8C?logo=cmake&logoColor=white)](https://github.com/N-Bermparis/pqtls-lab)
+[![Tests](https://img.shields.io/badge/tests-Automated-2E8B57?logo=githubactions&logoColor=white)](https://github.com/N-Bermparis/pqtls-lab)
+[![Security](https://img.shields.io/badge/security-Research%20Prototype-6A5ACD?logo=securityscorecard&logoColor=white)](SECURITY.md)
+[![Docker](https://img.shields.io/badge/docker-Supported-2496ED?logo=docker&logoColor=white)](docker)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?logo=c%2B%2B&logoColor=white)](https://en.cppreference.com/w/cpp/20)
 
