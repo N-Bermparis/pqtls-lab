@@ -565,6 +565,3 @@ material, are git-ignored, and must never be deployed.
 - **Issues and discussion:** <https://github.com/nbermparis/pqtls-lab/issues>
 - **Security reports:** see [`SECURITY.md`](SECURITY.md)
 - **Maintainer:** [Nikolaos Bermparis](https://github.com/nbermparis)
-- **Related work:** PQAudit, a post-quantum readiness assessment platform. The
-  integration boundary is a documented adapter format, not a coupling; see
-  [`docs/pqaudit-integration.md`](docs/pqaudit-integration.md).
