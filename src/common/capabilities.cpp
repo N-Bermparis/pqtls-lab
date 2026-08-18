@@ -69,7 +69,7 @@ std::string join(const std::vector<std::string>& values, std::string_view separa
 }
 
 bool probe_signature_algorithm(SSL_CTX* ctx, const char* name) {
-    const int result = SSL_CTX_set1_sigalgs_list(ctx, name);
+    const long result = SSL_CTX_set1_sigalgs_list(ctx, name);
     // The probe leaves entries in the error queue on failure; drain them so a
     // later, genuine failure is not reported with someone else's errors.
     if (result != 1) {

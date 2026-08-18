@@ -8,6 +8,7 @@
 #include <utility>
 
 #include <openssl/ssl.h>
+#include <openssl/x509v3.h>
 #include <spdlog/spdlog.h>
 
 #include "pqtls/capabilities.hpp"
@@ -140,7 +141,10 @@ ClientResult PqTlsClient::connect_and_exchange(const std::vector<Message>& messa
 
     // SNI. Sent regardless of verification mode so that a virtual-hosted server
     // selects the right certificate.
-    if (SSL_set_tlsext_host_name(ssl.get(), server_name.c_str()) != 1) {
+    if (SSL_ctrl(ssl.get(),
+                 SSL_CTRL_SET_TLSEXT_HOSTNAME,
+                 TLSEXT_NAMETYPE_host_name,
+                 const_cast<char*>(server_name.c_str())) != 1) {
         throw openssl_error(ErrorCategory::Configuration,
                             "failed to set the TLS SNI hostname to '" + server_name + "'");
     }

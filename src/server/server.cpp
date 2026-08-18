@@ -189,8 +189,8 @@ void PqTlsServer::run() {
 
         sockaddr_storage peer{};
         socklen_t peer_length = sizeof(peer);
-        const int client_fd = static_cast<int>(
-            ::accept(listener_.fd(), reinterpret_cast<sockaddr*>(&peer), &peer_length));
+        const int client_fd =
+            ::accept(listener_.fd(), reinterpret_cast<sockaddr*>(&peer), &peer_length);
         if (client_fd < 0) {
             continue;
         }

@@ -17,7 +17,7 @@ std::span<const std::uint8_t> as_span(const std::vector<std::uint8_t>& v) {
     return std::span<const std::uint8_t>(v.data(), v.size());
 }
 
-std::vector<std::uint8_t> bytes(std::string_view text) {
+[[maybe_unused]] std::vector<std::uint8_t> bytes(std::string_view text) {
     return std::vector<std::uint8_t>(reinterpret_cast<const std::uint8_t*>(text.data()),
                                      reinterpret_cast<const std::uint8_t*>(text.data() + text.size()));
 }

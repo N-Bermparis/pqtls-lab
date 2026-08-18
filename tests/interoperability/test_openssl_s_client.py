@@ -264,16 +264,45 @@ def test_s_client_without_a_certificate_is_refused_under_mtls(certs, tmp_path):
 
     with running_server("classical-x25519", certs, tmp_path,
                         require_client_cert=True) as server:
-        proc = s_client(server.port, certs, groups="X25519")
+        argv = [
+            OPENSSL, "s_client",
+            "-connect", f"127.0.0.1:{server.port}",
+            "-tls1_3",
+            "-groups", "X25519",
+            "-CAfile", str(certs / "ca.crt"),
+            "-servername", "localhost",
+            "-verify_hostname", "localhost",
+            "-verify_return_error",
+            "-ign_eof",
+        ]
 
-    output = proc.stdout + proc.stderr
-    # OpenSSL may still print the handshake line before the server's alert
-    # arrives, so look for the alert as well as the success marker.
+        proc = subprocess.Popen(
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        try:
+            stdout, stderr = proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+            pytest.fail(
+                "a client without a certificate was not rejected under mutual TLS "
+                "within 5 seconds.\n"
+                f"--- s_client output ---\n{stdout}{stderr}\n"
+                f"--- server log ---\n{server.log()}"
+            )
+
+    output = stdout + stderr
     rejected = (
-        "New, TLSv1.3" not in output
-        or "alert" in output.lower()
+        proc.returncode != 0
         or "certificate required" in output.lower()
+        or "alert" in output.lower()
     )
+
     assert rejected, (
         f"a client with no certificate was accepted under mutual TLS:\n{output}"
     )
