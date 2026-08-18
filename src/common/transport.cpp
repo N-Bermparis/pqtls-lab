@@ -185,8 +185,8 @@ Socket tcp_connect(const std::string& host, std::uint16_t port, std::uint32_t ti
     // Try every address in turn. A host with both AAAA and A records still
     // connects when only one family is actually routable.
     for (const addrinfo* candidate = results; candidate != nullptr; candidate = candidate->ai_next) {
-        const int fd = static_cast<int>(
-            ::socket(candidate->ai_family, candidate->ai_socktype, candidate->ai_protocol));
+        const int fd =
+            ::socket(candidate->ai_family, candidate->ai_socktype, candidate->ai_protocol);
         if (fd < 0) {
             last_error = last_socket_error();
             continue;
@@ -237,8 +237,8 @@ Socket tcp_listen(const std::string& address, std::uint16_t port, std::uint32_t 
     std::string last_error = "no addresses were returned";
 
     for (const addrinfo* candidate = results; candidate != nullptr; candidate = candidate->ai_next) {
-        const int fd = static_cast<int>(
-            ::socket(candidate->ai_family, candidate->ai_socktype, candidate->ai_protocol));
+        const int fd =
+            ::socket(candidate->ai_family, candidate->ai_socktype, candidate->ai_protocol);
         if (fd < 0) {
             last_error = last_socket_error();
             continue;
@@ -299,7 +299,11 @@ namespace {
                                std::move(details));
         case SSL_ERROR_SYSCALL: {
 #if !defined(_WIN32)
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            if (errno == EAGAIN
+#if EWOULDBLOCK != EAGAIN
+                || errno == EWOULDBLOCK
+#endif
+            ) {
                 throw TimeoutError(std::string(operation) + ": socket timeout elapsed",
                                    std::move(details));
             }

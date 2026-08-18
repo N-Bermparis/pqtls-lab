@@ -115,7 +115,10 @@ TEST_CASE("a JSONL line contains no embedded newline", "[metrics]") {
     // One record must be exactly one line, or the file is not valid JSON Lines.
     const std::string line = sample_metrics().to_jsonl_line();
     CHECK(line.find('\n') == std::string::npos);
-    CHECK_NOTHROW(nlohmann::json::parse(line));
+    CHECK_NOTHROW([&]() {
+        const auto parsed = nlohmann::json::parse(line);
+        (void)parsed;
+    }());
 }
 
 TEST_CASE("a successful record reports a null error category", "[metrics]") {
@@ -177,7 +180,10 @@ TEST_CASE("the writer produces one line per record", "[metrics][writer]") {
     const auto lines = file.lines();
     REQUIRE(lines.size() == 5);
     for (const auto& line : lines) {
-        CHECK_NOTHROW(nlohmann::json::parse(line));
+        CHECK_NOTHROW([&]() {
+            const auto parsed = nlohmann::json::parse(line);
+            (void)parsed;
+        }());
     }
 }
 
@@ -245,7 +251,10 @@ TEST_CASE("the writer is safe under concurrent use", "[metrics][writer][concurre
     REQUIRE(lines.size() == kThreads * kPerThread);
     for (const auto& line : lines) {
         INFO("line: " << line);
-        CHECK_NOTHROW(nlohmann::json::parse(line));
+        CHECK_NOTHROW([&]() {
+            const auto parsed = nlohmann::json::parse(line);
+            (void)parsed;
+        }());
     }
 }
 
