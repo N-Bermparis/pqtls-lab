@@ -18,7 +18,7 @@ ARG OPENSSL_SHA256=a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac9
 ARG OPENSSL_PREFIX=/opt/openssl
 
 # ubuntu:24.04, pinned by manifest-list digest (see docker/Dockerfile.openssl).
-FROM ubuntu@sha256:561618e2c15bf2397621dd04f96926663a3b5616c189cf7e38db7e82f5c538ea AS openssl
+FROM ubuntu@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78 AS openssl
 
 ARG OPENSSL_VERSION
 ARG OPENSSL_SHA256
@@ -91,7 +91,7 @@ RUN ctest --test-dir build --output-on-failure
 # ---------------------------------------------------------------------------
 # Stage 3: runtime
 # ---------------------------------------------------------------------------
-FROM ubuntu@sha256:561618e2c15bf2397621dd04f96926663a3b5616c189cf7e38db7e82f5c538ea AS runtime
+FROM ubuntu@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78 AS runtime
 
 ARG OPENSSL_PREFIX=/opt/openssl
 ENV DEBIAN_FRONTEND=noninteractive
